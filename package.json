@@ -1,10 +1,10 @@
 {
-  "name": "pubmed-seed-mcp-app",
-  "version": "1.0.0",
-  "description": "MCP App for building systematic review search strings from PubMed seed articles",
+  "name": "reviewseed-mcp-app",
+  "version": "2.0.0",
+  "description": "ReviewSeed MCP App — search PubMed, ClinicalTrials.gov, and ERIC; explore MeSH/ERIC vocabulary with synonyms and hierarchy; assemble Boolean or ten-framework (PICO, PECO, SPIDER, PCC, ...) search strings",
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && tsc -p tsconfig.server.json && cross-env INPUT=mcp-app.html vite build",
+    "build": "tsc --noEmit && tsc -p tsconfig.server.json && mkdir -p dist/server/assets && cp server/assets/eric-thesaurus-2025.json dist/server/assets/eric-thesaurus-2025.json && cross-env INPUT=mcp-app.html vite build",
     "start": "node dist/main.js",
     "dev": "concurrently --raw \"cross-env NODE_ENV=development INPUT=mcp-app.html vite build --watch\" \"tsx watch main.ts\"",
     "start:stdio": "node dist/main.js --stdio"
@@ -18,7 +18,8 @@
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

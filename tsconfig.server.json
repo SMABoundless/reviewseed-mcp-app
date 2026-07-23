@@ -10,5 +10,5 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["server.ts", "main.ts"]
+  "include": ["server", "server.ts", "main.ts"]
 }

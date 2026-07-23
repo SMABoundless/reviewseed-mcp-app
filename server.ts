@@ -4,256 +4,253 @@ import {
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { DOMParser } from "@xmldom/xmldom";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+
+import { ericThesaurusDetails, ericThesaurusSearch, ERIC_THESAURUS_EDITION } from "./server/eric-thesaurus.js";
+import {
+  CT_ADV_FIELDS, ctAssembleTerm, ctAuthorSearch, ctLookup, ctSearch,
+} from "./server/trials.js";
+import {
+  ERIC_ADV_FIELDS, ericAssembleTerm, ericAuthorSearch, ericLookup, ericSearch,
+} from "./server/eric.js";
+import { meshVocabDetails, meshVocabSearch } from "./server/mesh.js";
+import {
+  PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
+} from "./server/pubmed.js";
+import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS } from "./server/query.js";
+import type { Source } from "./server/types.js";
 
 // When compiled, server.js lives inside dist/ alongside mcp-app.html
 const DIST_DIR = import.meta.dirname.endsWith("dist")
   ? import.meta.dirname
   : path.join(import.meta.dirname, "dist");
-const EUTILS   = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
-const NCBI_QS  = "tool=pubmed-seed-mcp&email=pubmedseed%40example.com";
-const RESOURCE_URI = "ui://pubmed-seed/mcp-app.html";
+const RESOURCE_URI = "ui://reviewseed/mcp-app.html";
+const SOURCES = ["pubmed", "eric", "trials"] as const;
+const SOURCE_LABEL: Record<Source, string> = { pubmed: "PubMed", eric: "ERIC", trials: "ClinicalTrials.gov" };
 
-// ── NCBI helpers ───────────────────────────────────────────────────────────────
+const sourceEnum = z.enum(SOURCES);
+const poolSchema = z.object({
+  keywords: z.array(z.string()).default([]),
+  mesh: z.array(z.string()).default([]),
+  eric: z.array(z.string()).default([]),
+  queries: z.array(z.string()).default([]),
+  ericQueries: z.array(z.string()).default([]),
+  ctQueries: z.array(z.string()).default([]),
+});
+const kwFieldsSchema = z.record(z.string(), z.string()).default({});
 
-async function eutils(endpoint: string, qs: string): Promise<Response> {
-  const url = `${EUTILS}/${endpoint}?${NCBI_QS}&${qs}`;
-  const res  = await fetch(url);
-  if (!res.ok) throw new Error(`NCBI ${endpoint} returned HTTP ${res.status}`);
-  return res;
+function textResult(payload: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(payload) }] };
 }
-
-interface Article {
-  pmid: string;
-  doi: string;
-  title: string;
-  authors: string[];
-  moreAuth: boolean;
-  year: string;
-  journal: string;
-  keywords: string[];
-  mesh: string[];
+function errorResult(e: unknown) {
+  return textResult({ error: e instanceof Error ? e.message : String(e) });
 }
-
-async function fetchSummaries(ids: string[]): Promise<Article[]> {
-  const res  = await eutils("esummary.fcgi", `db=pubmed&id=${ids.join(",")}&retmode=json`);
-  const data = await res.json() as Record<string, unknown>;
-  const result = data.result as Record<string, Record<string, unknown>> | undefined;
-
-  return ids.map(id => {
-    const doc    = result?.[id] ?? {};
-    const aids   = (doc.articleids as Array<{ idtype: string; value: string }>) ?? [];
-    const doi    = aids.find(x => x.idtype === "doi")?.value ?? "";
-    const rawAuthors = (doc.authors as Array<{ name: string }>) ?? [];
-    return {
-      pmid:     id,
-      doi,
-      title:    stripHtml((doc.title as string) ?? "") || "Untitled",
-      authors:  rawAuthors.slice(0, 3).map(a => a.name),
-      moreAuth: rawAuthors.length > 3,
-      year:     ((doc.pubdate as string) ?? "").match(/\d{4}/)?.[0] ?? "",
-      journal:  (doc.source as string) ?? "",
-      keywords: [],
-      mesh:     [],
-    };
-  });
-}
-
-async function fetchFullXml(ids: string[]): Promise<Record<string, { mesh: string[]; keywords: string[] }>> {
-  const res  = await eutils("efetch.fcgi", `db=pubmed&id=${ids.join(",")}&rettype=xml&retmode=xml`);
-  const text = await res.text();
-  const doc  = new DOMParser().parseFromString(text, "text/xml");
-  const out: Record<string, { mesh: string[]; keywords: string[] }> = {};
-
-  const articles = doc.getElementsByTagName("PubmedArticle");
-  for (let i = 0; i < articles.length; i++) {
-    const art    = articles[i];
-    const pmidEl = art.getElementsByTagName("PMID")[0];
-    const pmid   = pmidEl?.textContent?.trim();
-    if (!pmid) continue;
-
-    const mesh: string[] = [];
-    const descriptors = art.getElementsByTagName("DescriptorName");
-    for (let j = 0; j < descriptors.length; j++) {
-      const t = descriptors[j].textContent?.trim();
-      if (t) mesh.push(t);
-    }
-
-    const keywords: string[] = [];
-    const kwEls = art.getElementsByTagName("Keyword");
-    for (let j = 0; j < kwEls.length; j++) {
-      const t = kwEls[j].textContent?.trim();
-      if (t && t.length > 1) keywords.push(t);
-    }
-
-    out[pmid] = {
-      mesh:     [...new Set(mesh)],
-      keywords: [...new Set(keywords)],
-    };
-  }
-  return out;
-}
-
-export async function buildArticles(ids: string[]): Promise<Article[]> {
-  const [summaries, fullData] = await Promise.all([
-    fetchSummaries(ids),
-    fetchFullXml(ids),
-  ]);
-  return summaries.map(s => ({
-    ...s,
-    keywords: fullData[s.pmid]?.keywords ?? [],
-    mesh:     fullData[s.pmid]?.mesh     ?? [],
-  }));
-}
-
-export async function buildArticlesFromText(text: string): Promise<Article[]> {
-  const found = new Set<string>();
-  for (const m of text.matchAll(/(?:PMID|pmid)[:\s]*(\d{7,8})/g)) found.add(m[1]);
-  for (const m of text.matchAll(/^\s*(\d{7,8})\s*$/gm)) found.add(m[1]);
-  for (const m of text.matchAll(/10\.\d{4,}\/\S+/g)) {
-    const ids = await esearch(`${m[0]}[doi]`, 1);
-    if (ids[0]) found.add(ids[0]);
-  }
-  if (!found.size) {
-    const lines = text.split(/\n+/).filter(l => l.trim().length > 40);
-    for (const line of lines.slice(0, 10)) {
-      const t = line.replace(/^\d+\.\s*/, "").split(/[.;]\s+\d{4}/)[0].trim().slice(0, 120);
-      if (t.length < 15) continue;
-      const ids = await esearch(`${t}[Title]`, 1);
-      if (ids[0]) found.add(ids[0]);
-    }
-  }
-  return found.size ? buildArticles([...found]) : [];
-}
-
-export async function esearch(term: string, retmax: number, retstart = 0): Promise<string[]> {
-  const qs  = `db=pubmed&term=${encodeURIComponent(term)}&retmax=${retmax}&retstart=${retstart}&retmode=json`;
-  const res  = await eutils("esearch.fcgi", qs);
-  const data = await res.json() as { esearchresult?: { idlist?: string[] } };
-  return data.esearchresult?.idlist ?? [];
-}
-
-function stripHtml(s: string): string {
-  return s.replace(/<[^>]+>/g, "");
-}
-
-// ── Server factory ─────────────────────────────────────────────────────────────
 
 export function createServer(): McpServer {
-  const server = new McpServer({
-    name: "PubMed Seed",
-    version: "1.0.0",
-  });
+  const server = new McpServer({ name: "ReviewSeed", version: "2.0.0" });
 
   // ── Trigger tool — Claude calls this to open the UI ──────────────────────────
   registerAppTool(
     server,
-    "pubmed_seed_open",
+    "reviewseed_open",
     {
-      title: "Open PubMed Seed",
+      title: "Open ReviewSeed",
       description:
-        "Opens the PubMed Seed interface for building systematic review and scoping review search strings. " +
-        "Use when the user wants to search PubMed, harvest MeSH headings and keywords from seed articles, " +
-        "or build a Boolean or PICO search string.",
+        "Opens the ReviewSeed interface for building systematic review and scoping review search strings across " +
+        "PubMed, ClinicalTrials.gov, and ERIC. Use when the user wants to search one of these databases, explore " +
+        "the MeSH or ERIC Thesaurus vocabulary (synonyms, scope notes, broader/narrower hierarchy), harvest MeSH " +
+        "headings/keywords/descriptors from articles, or build a Boolean or framework-structured (PICO, PECO, " +
+        "SPIDER, PCC, and 6 others) search string.",
       inputSchema: {},
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async () => ({
-      content: [{ type: "text" as const, text: [
-        "PubMed Seed is open.",
-        "",
-        "If the UI did not render inline, use these CORS-enabled REST endpoints to build an interactive artifact instead:",
-        "  GET https://pubmed-seed-mcp-app.onrender.com/api/search?q=QUERY&page=1",
-        "  GET https://pubmed-seed-mcp-app.onrender.com/api/lookup?ids=PMID1,PMID2",
-        "",
-        "Both return JSON: { articles: [{ pmid, doi, title, authors, moreAuth, year, journal, keywords, mesh }], has_more? }",
-        "",
-        "Build a React artifact with: search input → call /api/search → show article cards with MeSH chips → harvest terms → Boolean/PICO string builder.",
-      ].join("\n") }],
+      content: [{
+        type: "text" as const,
+        text: [
+          "ReviewSeed is open — three sources (PubMed, ClinicalTrials.gov, ERIC), a MeSH/ERIC vocabulary explorer, ",
+          "and ten search-strategy frameworks (PICO, PICOS, PECO, SPICE, CIMO, SPIDER, PICo, PCC, ECLIPSE, PIRD) ",
+          "plus a Custom builder.",
+          "",
+          "If the UI did not render inline, call these tools directly instead — no UI required:",
+          "  reviewseed_search / reviewseed_lookup / reviewseed_advanced_search — find records",
+          "  reviewseed_vocab_search / reviewseed_vocab_details — explore MeSH or ERIC Thesaurus terms",
+          "  reviewseed_author_search — everything a given author published",
+          "  reviewseed_assemble_query — build a Boolean or framework (PICO/PECO/...) string from a term pool, headlessly",
+        ].join("\n"),
+      }],
     }),
   );
 
-  // ── Search tool — called by the UI via app bridge ─────────────────────────────
+  // ── Search ─────────────────────────────────────────────────────────────────
   server.tool(
-    "pubmed_seed_search",
-    "Search PubMed and return article metadata including MeSH headings and author keywords.",
+    "reviewseed_search",
+    "Search PubMed, ClinicalTrials.gov, or ERIC and return record metadata including MeSH headings/ERIC descriptors and keywords.",
     {
-      query:    z.string().describe("PubMed search query"),
-      page:     z.number().int().min(1).default(1).describe("Page number (1-indexed)"),
-      pageSize: z.number().int().min(1).max(25).default(10).describe("Results per page"),
+      source: sourceEnum.describe("Which database to search"),
+      query: z.string().describe("Search query, in the syntax of the chosen source"),
+      page: z.number().int().min(1).max(5).default(1).describe("Page number (1-indexed, max 5)"),
+      pageSize: z.number().int().min(1).max(25).default(10).describe("Results per page (ignored for trials, which pages at 10)"),
     },
-    async ({ query, page, pageSize }) => {
+    async ({ source, query, page, pageSize }) => {
       try {
-        const retstart = (page - 1) * pageSize;
-        // Fetch one extra to detect hasMore
-        const allIds = await esearch(query, pageSize + 1, retstart);
-        const hasMore = allIds.length > pageSize;
-        const ids = allIds.slice(0, pageSize);
-
-        if (!ids.length) {
-          return { content: [{ type: "text" as const, text: JSON.stringify({ articles: [], has_more: false }) }] };
-        }
-
-        const articles = await buildArticles(ids);
-        return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({ articles, has_more: hasMore }),
-          }],
-        };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: msg }) }] };
-      }
+        const r = source === "eric" ? await ericSearch(query, page, pageSize)
+          : source === "trials" ? await ctSearch(query, page)
+          : await pubmedSearch(query, page, pageSize);
+        return textResult(r);
+      } catch (e) { return errorResult(e); }
     },
   );
 
-  // ── Lookup tool — called by the UI via app bridge ─────────────────────────────
+  // ── Lookup (paste citations) ───────────────────────────────────────────────
   server.tool(
-    "pubmed_seed_lookup",
-    "Look up PubMed articles by pasted text containing PMIDs, DOIs, and/or titles.",
+    "reviewseed_lookup",
+    "Look up records by pasted text containing PMIDs/DOIs (PubMed), EJ/ED accession numbers (ERIC), or NCT ids (ClinicalTrials.gov); title text is a best-effort fallback for all three.",
     {
-      text: z.string().describe("Pasted reference list — may contain PMIDs (PMID: 12345678), DOIs (10.xxx/yyy), or title text"),
+      source: sourceEnum,
+      text: z.string().describe("Pasted reference list"),
     },
-    async ({ text }) => {
+    async ({ source, text }) => {
       try {
-        const found = new Set<string>();
+        const r = source === "eric" ? await ericLookup(text)
+          : source === "trials" ? await ctLookup(text)
+          : await pubmedLookup(text);
+        return textResult(r);
+      } catch (e) { return errorResult(e); }
+    },
+  );
 
-        // Extract PMIDs
-        for (const m of text.matchAll(/(?:PMID|pmid)[:\s]*(\d{7,8})/g)) found.add(m[1]);
-        // Plain bare PMIDs (8-digit numbers on their own line)
-        for (const m of text.matchAll(/^\s*(\d{7,8})\s*$/gm)) found.add(m[1]);
-
-        // Resolve DOIs
-        for (const m of text.matchAll(/10\.\d{4,}\/\S+/g)) {
-          const ids = await esearch(`${m[0]}[doi]`, 1);
-          if (ids[0]) found.add(ids[0]);
+  // ── Advanced search ────────────────────────────────────────────────────────
+  server.tool(
+    "reviewseed_advanced_search",
+    "List the field-specific search options for a source, or assemble+run a field-specific query built from multiple rows " +
+    "combined with AND/OR/NOT (mirrors each database's own advanced-search builder).",
+    {
+      source: sourceEnum,
+      rows: z.array(z.object({
+        field: z.string().describe("Field tag — call with an empty rows array first to see valid tags for this source"),
+        value: z.string(),
+        op: z.enum(["AND", "OR", "NOT"]).optional().describe("Operator joining this row to the previous one; ignored on the first row"),
+      })).default([]),
+      run: z.boolean().default(true).describe("Also execute the assembled query against the source"),
+      page: z.number().int().min(1).max(5).default(1),
+    },
+    async ({ source, rows, run, page }) => {
+      try {
+        if (!rows.length) {
+          const fields = source === "eric" ? ERIC_ADV_FIELDS : source === "trials" ? CT_ADV_FIELDS : PUBMED_FIELDS;
+          return textResult({ fields, message: `Pass rows:[{field,value}] using one of these field tags for ${SOURCE_LABEL[source]}.` });
         }
+        const assemble = source === "eric" ? ericAssembleTerm : source === "trials" ? ctAssembleTerm : pubmedAssembleTerm;
+        const query = rows.map((r, i) => {
+          const snippet = assemble(r.field, r.value);
+          return i === 0 ? snippet : `${r.op ?? "AND"} ${snippet}`;
+        }).join(" ");
+        if (!run) return textResult({ query });
+        const results = source === "eric" ? await ericSearch(query, page, 10)
+          : source === "trials" ? await ctSearch(query, page)
+          : await pubmedSearch(query, page, 10);
+        return textResult({ query, ...results });
+      } catch (e) { return errorResult(e); }
+    },
+  );
 
-        // Title fallback if still empty
-        if (!found.size) {
-          const lines = text.split(/\n+/).filter(l => l.trim().length > 40);
-          for (const line of lines.slice(0, 10)) {
-            const t = line.replace(/^\d+\.\s*/, "").split(/[.;]\s+\d{4}/)[0].trim().slice(0, 120);
-            if (t.length < 15) continue;
-            const ids = await esearch(`${t}[Title]`, 1);
-            if (ids[0]) found.add(ids[0]);
-          }
+  // ── Vocabulary explorer ────────────────────────────────────────────────────
+  server.tool(
+    "reviewseed_vocab_search",
+    "Search the MeSH or ERIC Thesaurus controlled vocabulary by heading OR synonym (e.g. \"heart attack\" finds " +
+    "Myocardial Infarction). Rows include `via` — the synonym/entry-term that matched, i.e. the print-thesaurus " +
+    "cross-reference — when the match wasn't on the canonical label itself.",
+    {
+      vocab: z.enum(["mesh", "eric"]),
+      query: z.string(),
+    },
+    async ({ vocab, query }) => {
+      try {
+        if (vocab === "mesh") return textResult({ rows: await meshVocabSearch(query) });
+        const rows = await ericThesaurusSearch(query);
+        return rows === undefined
+          ? textResult({ rows: [], error: `Couldn't load the ERIC Thesaurus ${ERIC_THESAURUS_EDITION} snapshot` })
+          : textResult({ rows });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  server.tool(
+    "reviewseed_vocab_details",
+    "Get the scope note (MeSH only), entry terms / Use-For synonyms, and broader/narrower headings for a MeSH or " +
+    "ERIC Thesaurus term. Broader/narrower terms can be passed back into reviewseed_vocab_search to walk the hierarchy.",
+    {
+      vocab: z.enum(["mesh", "eric"]),
+      label: z.string().describe("The canonical heading/descriptor label (not a synonym)"),
+      id: z.string().optional().describe("MeSH descriptor id, if known from a prior vocab_search result — enables the scope note"),
+    },
+    async ({ vocab, label, id }) => {
+      try {
+        if (vocab === "mesh") return textResult(await meshVocabDetails(label, id));
+        const details = await ericThesaurusDetails(label);
+        return details === undefined
+          ? textResult({ terms: [], bt: [], nt: [], scopeNote: "", error: `Couldn't load the ERIC Thesaurus ${ERIC_THESAURUS_EDITION} snapshot` })
+          : textResult(details);
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Author lookup ──────────────────────────────────────────────────────────
+  server.tool(
+    "reviewseed_author_search",
+    "Find everything a given author has published in the chosen source.",
+    {
+      source: sourceEnum,
+      name: z.string(),
+      page: z.number().int().min(1).max(5).default(1),
+    },
+    async ({ source, name, page }) => {
+      try {
+        const r = source === "eric" ? await ericAuthorSearch(name, page, 10)
+          : source === "trials" ? await ctAuthorSearch(name)
+          : await pubmedAuthorSearch(name, page, 10);
+        return textResult(r);
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Query assembly — the one tool useful even with the UI never opened ────
+  server.tool(
+    "reviewseed_assemble_query",
+    "Assemble a Boolean or framework-structured (PICO, PECO, SPIDER, PCC, ...) search string from a curated term " +
+    "pool, in the target source's own syntax (PubMed bracket tags, ERIC field prefixes, or ClinicalTrials.gov " +
+    "AREA[...] operators). Call with mode \"framework\" and no `framework.key` to list the ten available frameworks. " +
+    "Callable directly without ever opening the UI.",
+    {
+      source: sourceEnum,
+      pool: poolSchema,
+      kwFields: kwFieldsSchema.describe("Per-keyword PubMed field tag (tiab/ti/ab/all); defaults to tiab"),
+      mode: z.enum(["boolean", "framework"]).default("boolean"),
+      booleanOpts: z.object({
+        kwOp: z.enum(["OR", "AND"]).default("OR"),
+        vocabOp: z.enum(["OR", "AND"]).default("OR"),
+        joinOp: z.enum(["AND", "OR"]).default("AND"),
+      }).default({}),
+      framework: z.object({
+        key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
+        buckets: z.record(z.string(), z.array(z.string())).describe("Bucket key -> term labels placed in that bucket"),
+      }).optional(),
+    },
+    async ({ source, pool, kwFields, mode, booleanOpts, framework }) => {
+      try {
+        if (mode === "framework" && !framework?.key) {
+          return textResult({
+            frameworks: Object.fromEntries(Object.entries(FRAMEWORKS).map(([k, f]) => [k, { full: f.full, tag: f.tag, blurb: f.blurb, buckets: f.buckets }])),
+          });
         }
-
-        if (!found.size) {
-          return { content: [{ type: "text" as const, text: JSON.stringify({ articles: [], error: "No articles found" }) }] };
-        }
-
-        const articles = await buildArticles([...found]);
-        return { content: [{ type: "text" as const, text: JSON.stringify({ articles }) }] };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: msg }) }] };
-      }
+        const query = mode === "framework"
+          ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
+          : buildBooleanQuery(pool, kwFields, booleanOpts, source);
+        return textResult({ query });
+      } catch (e) { return errorResult(e); }
     },
   );
 
@@ -265,9 +262,7 @@ export function createServer(): McpServer {
     { mimeType: RESOURCE_MIME_TYPE },
     async () => {
       const html = await fs.readFile(path.join(DIST_DIR, "mcp-app.html"), "utf-8");
-      return {
-        contents: [{ uri: RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }],
-      };
+      return { contents: [{ uri: RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }] };
     },
   );
 

@@ -2,13 +2,28 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Request, Response } from "express";
-import { buildArticles, buildArticlesFromText, esearch, createServer } from "./server.js";
+import { createServer } from "./server.js";
+import { ericLookup, ericSearch } from "./server/eric.js";
+import { ericThesaurusSearch } from "./server/eric-thesaurus.js";
+import { meshVocabSearch } from "./server/mesh.js";
+import { pubmedLookup, pubmedSearch } from "./server/pubmed.js";
+import { ctLookup, ctSearch } from "./server/trials.js";
+import type { Source } from "./server/types.js";
 
 // Manually set CORS headers — cors() middleware doesn't apply through createMcpExpressApp
 function setCors(res: Response): void {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+}
+
+function parseSource(req: Request, res: Response): Source | null {
+  const source = String(req.query.source ?? "pubmed");
+  if (source !== "pubmed" && source !== "eric" && source !== "trials") {
+    res.status(400).json({ error: 'source must be "pubmed", "eric", or "trials"' });
+    return null;
+  }
+  return source;
 }
 
 async function startStreamableHTTPServer(): Promise<void> {
@@ -21,19 +36,20 @@ async function startStreamableHTTPServer(): Promise<void> {
     res.sendStatus(204);
   });
 
-  // ── REST proxy — callable from Claude artifacts ───────────────────────────────
+  // ── REST fallback — callable from a Claude artifact when the host can't
+  //    render the MCP App UI inline ────────────────────────────────────────────
   app.get("/api/search", async (req: Request, res: Response) => {
     setCors(res);
+    const source = parseSource(req, res);
+    if (!source) return;
     const q    = String(req.query.q ?? "").trim();
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
     if (!q) { res.status(400).json({ error: "q is required" }); return; }
     try {
-      const PAGE_SIZE = 10;
-      const allIds  = await esearch(q, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE);
-      const hasMore = allIds.length > PAGE_SIZE;
-      const ids     = allIds.slice(0, PAGE_SIZE);
-      const articles = ids.length ? await buildArticles(ids) : [];
-      res.json({ articles, has_more: hasMore });
+      const r = source === "eric" ? await ericSearch(q, page, 10)
+        : source === "trials" ? await ctSearch(q, page)
+        : await pubmedSearch(q, page, 10);
+      res.json(r);
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
@@ -41,18 +57,29 @@ async function startStreamableHTTPServer(): Promise<void> {
 
   app.get("/api/lookup", async (req: Request, res: Response) => {
     setCors(res);
-    const ids  = String(req.query.ids ?? "").trim();
+    const source = parseSource(req, res);
+    if (!source) return;
     const text = String(req.query.text ?? "").trim();
-    if (!ids && !text) { res.status(400).json({ error: "ids or text is required" }); return; }
+    if (!text) { res.status(400).json({ error: "text is required" }); return; }
     try {
-      let articles;
-      if (ids) {
-        const pmids = ids.split(",").map(s => s.trim()).filter(Boolean);
-        articles = await buildArticles(pmids);
-      } else {
-        articles = await buildArticlesFromText(text);
-      }
-      res.json({ articles });
+      const r = source === "eric" ? await ericLookup(text)
+        : source === "trials" ? await ctLookup(text)
+        : await pubmedLookup(text);
+      res.json(r);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.get("/api/vocab", async (req: Request, res: Response) => {
+    setCors(res);
+    const vocab = String(req.query.vocab ?? "mesh");
+    if (vocab !== "mesh" && vocab !== "eric") { res.status(400).json({ error: 'vocab must be "mesh" or "eric"' }); return; }
+    const q = String(req.query.q ?? "").trim();
+    if (!q) { res.status(400).json({ error: "q is required" }); return; }
+    try {
+      const rows = vocab === "mesh" ? await meshVocabSearch(q) : await ericThesaurusSearch(q);
+      res.json({ rows: rows ?? [] });
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
@@ -81,7 +108,7 @@ async function startStreamableHTTPServer(): Promise<void> {
   });
 
   const httpServer = app.listen(port, () => {
-    console.log(`PubMed Seed MCP App listening on http://localhost:${port}/mcp`);
+    console.log(`ReviewSeed MCP App listening on http://localhost:${port}/mcp`);
   });
 
   const shutdown = () => {

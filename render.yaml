@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: pubmed-seed-mcp-app
+    name: reviewseed-mcp-app
     runtime: node
     buildCommand: npm install && npm run build
     startCommand: node dist/main.js
