@@ -4,9 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ReviewSeed</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
-      *, *::before, *::after { box-sizing: border-box; }
-      body { margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      select { font-family: inherit; }
+      /* Strip the default outline only for mouse focus; keyboard focus
+         (`:focus-visible`) keeps a clear ring so keyboard-only users can see
+         where they are — mirrors reviewseed.library.northwestern.edu. */
+      input:focus:not(:focus-visible),
+      textarea:focus:not(:focus-visible),
+      select:focus:not(:focus-visible),
+      button:focus:not(:focus-visible) { outline: none; }
+      :focus-visible { outline: 2px solid #6aa3d4; outline-offset: 2px; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #c9c3b4; border-radius: 3px; }
     </style>
   </head>
   <body>
