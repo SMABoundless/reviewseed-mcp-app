@@ -262,7 +262,23 @@ export function createServer(): McpServer {
     { mimeType: RESOURCE_MIME_TYPE },
     async () => {
       const html = await fs.readFile(path.join(DIST_DIR, "mcp-app.html"), "utf-8");
-      return { contents: [{ uri: RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }] };
+      return {
+        contents: [{
+          uri: RESOURCE_URI,
+          mimeType: RESOURCE_MIME_TYPE,
+          text: html,
+          _meta: {
+            ui: {
+              csp: {
+                // Google Fonts (Fraunces/Inter/JetBrains Mono) — same origins the website allow-lists.
+                resourceDomains: ["https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+              },
+              // Without this, navigator.clipboard.writeText() silently no-ops in the sandboxed iframe.
+              permissions: { clipboardWrite: {} },
+            },
+          },
+        }],
+      };
     },
   );
 

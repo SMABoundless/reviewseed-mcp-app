@@ -101,6 +101,14 @@ interface AdvRow { field: string; value: string; op: "AND" | "OR" | "NOT" }
 interface AdvField { label: string; tag: string }
 interface CustomBucket { key: string; label: string }
 type BucketMap = Record<string, string[]>;
+// Pool-chip "≈" synonyms panel — distinct from VocabDetailsState (the
+// Vocabulary Explorer tab's row details): this one lives on pool chips
+// themselves (Harvest tab), has no scope note, and its broader/narrower
+// entries add directly to the pool rather than re-centering a search.
+interface SynPanelState {
+  term: string; vocab: "mesh" | "eric"; loading: boolean;
+  terms?: string[]; bt?: string[]; nt?: string[]; missing?: boolean;
+}
 
 // ── MCP server call helper ─────────────────────────────────────────────────────
 async function callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
@@ -178,9 +186,11 @@ function Chip({ c, term, type, selected, onClick, draggable, onDragStart, field,
       )}
       {onDetails && (
         <button onClick={e => { e.stopPropagation(); onDetails(); }} aria-expanded={detailsOpen}
-          aria-label={`${detailsOpen ? "Hide" : "Show"} details for ${term}`}
-          style={{ padding: "0 6px", background: "none", border: "none", borderLeft: border, color: "inherit", fontSize: 10, fontFamily: MONO, cursor: "pointer" }}>
-          {detailsOpen ? "▴" : "▾"}
+          aria-pressed={detailsOpen}
+          title={`NLM entry terms — synonyms of "${term}"`}
+          aria-label={`${detailsOpen ? "Hide" : "Show"} synonyms of ${term}`}
+          style={{ background: detailsOpen ? colors.color : "none", border: "none", borderLeft: border, color: detailsOpen ? colors.background : "inherit", padding: "0 6px", cursor: "pointer", fontSize: 11, fontFamily: MONO }}>
+          ≈
         </button>
       )}
       {onRemove && (
@@ -192,7 +202,20 @@ function Chip({ c, term, type, selected, onClick, draggable, onDragStart, field,
 }
 
 // ── Query output box — matches the site's near-black code block ───────────────
+// MCP Apps render in a sandboxed iframe: raw window.open() is blocked, so
+// opening an external link must go through the host via app.openLink(). The
+// host may still deny it (user preference/security policy) — surface that
+// instead of silently doing nothing.
 function QueryBox({ c, query, copied, onCopy, source }: { c: Theme; query: string; copied: boolean; onCopy: () => void; source: Source }) {
+  const [linkError, setLinkError] = useState(false);
+  const run = async () => {
+    setLinkError(false);
+    const url = `${SOURCE_HOME[source]}${encodeURIComponent(query.replace(/\n/g, " "))}`;
+    try {
+      const r = await mcpApp.openLink({ url });
+      if (r.isError) setLinkError(true);
+    } catch { setLinkError(true); }
+  };
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ fontSize: 11, fontFamily: MONO, color: c.ink3, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Search string</div>
@@ -204,11 +227,91 @@ function QueryBox({ c, query, copied, onCopy, source }: { c: Theme; query: strin
         <button onClick={onCopy} style={{ padding: "9px 18px", background: copied ? c.accent : c.ink, color: c.surface, border: "none", borderRadius: 3, fontSize: 12, cursor: "pointer", fontFamily: SANS, fontWeight: 500, letterSpacing: 0.3 }}>
           {copied ? "Copied to clipboard" : "Copy to Clipboard"}
         </button>
-        <button onClick={() => window.open(`${SOURCE_HOME[source]}${encodeURIComponent(query.replace(/\n/g, " "))}`, "_blank")}
+        <button onClick={run}
           style={{ padding: "9px 18px", background: "transparent", color: c.accent, border: `1px solid ${c.accent}`, borderRadius: 3, fontSize: 12, cursor: "pointer", fontFamily: SANS, fontWeight: 500, letterSpacing: 0.3 }}>
           Run in {SOURCE_LABEL[source]}
         </button>
+        {linkError && <div role="alert" style={{ fontSize: 11.5, color: c.error, alignSelf: "center" }}>Host blocked opening the link — copy the string above and paste it into {SOURCE_LABEL[source]} directly.</div>}
       </div>
+    </div>
+  );
+}
+
+// ── Pool-chip synonyms panel — the site's "≈" button on MeSH/ERIC pool chips.
+// Distinct from the Vocabulary Explorer tab: entry terms/broader/narrower here
+// add directly to the pool rather than re-centering a search.
+function SynPanel({ c, panel, expanded, setExpanded, pool, onAddKeyword, onAddVocab }: {
+  c: Theme; panel: SynPanelState; expanded: { bt?: boolean; nt?: boolean }; setExpanded: React.Dispatch<React.SetStateAction<{ bt?: boolean; nt?: boolean }>>;
+  pool: Pool; onAddKeyword: (t: string) => void; onAddVocab: (vocab: "mesh" | "eric", t: string) => void;
+}) {
+  const isMesh = panel.vocab === "mesh";
+  const vocabPool = isMesh ? pool.mesh : pool.eric;
+  const vocabColor = isMesh ? c.mesh : c.eric;
+  const vocabBg = isMesh ? c.meshSoft : c.ericSoft;
+
+  const kwBtn = (t: string) => {
+    const inPool = pool.keywords.includes(t);
+    return (
+      <button key={t} onClick={() => !inPool && onAddKeyword(t)} aria-disabled={inPool}
+        title={inPool ? `${t} is in the keyword pool` : `Add "${t}" to the keyword pool`}
+        style={{ padding: "3px 8px", fontSize: 11, fontFamily: MONO, cursor: inPool ? "default" : "pointer", background: inPool ? c.kw : c.kwSoft, color: inPool ? "#fff" : c.kw, border: "none", borderRadius: 2 }}>
+        {inPool ? "✓ " : "+ "}{t}
+      </button>
+    );
+  };
+  const descBtn = (t: string) => {
+    const inPool = vocabPool.includes(t);
+    return (
+      <button key={t} onClick={() => !inPool && onAddVocab(panel.vocab, t)} aria-disabled={inPool}
+        title={inPool ? `${t} is in the ${isMesh ? "MeSH" : "ERIC descriptor"} pool` : `Add "${t}" to the ${isMesh ? "MeSH" : "ERIC descriptor"} pool`}
+        style={{ padding: "3px 8px", fontSize: 11, fontFamily: MONO, cursor: inPool ? "default" : "pointer", background: inPool ? vocabColor : vocabBg, color: inPool ? "#fff" : vocabColor, border: "none", borderRadius: 2 }}>
+        {inPool ? "✓ " : "+ "}{t}
+      </button>
+    );
+  };
+  const hierRow = (label: string, list: string[] | undefined, key: "bt" | "nt") => {
+    if (!list?.length) return null;
+    const shown = expanded[key] ? list : list.slice(0, 12);
+    return (
+      <div style={{ marginTop: 6 }}>
+        <div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 3 }}>{label}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {shown.map(descBtn)}
+          {list.length > 12 && (
+            <button onClick={() => setExpanded(p => ({ ...p, [key]: !p[key] }))}
+              style={{ padding: "3px 8px", fontSize: 10.5, fontFamily: SANS, cursor: "pointer", background: "transparent", color: c.ink3, border: `1px dashed ${c.line}`, borderRadius: 2, letterSpacing: 0.3 }}>
+              {expanded[key] ? "less ▲" : `+${list.length - 12} more ▼`}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ marginTop: 8, padding: "8px 10px", background: c.chipBg, border: `1px solid ${c.line}`, borderRadius: 3 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase" }}>
+          synonyms of {panel.term} · {isMesh ? "NLM entry terms" : "ERIC Thesaurus"}
+        </div>
+      </div>
+      {panel.loading ? (
+        <div style={{ fontSize: 11.5, color: c.ink3, fontStyle: "italic" }}>Looking up synonyms…</div>
+      ) : panel.missing ? (
+        <div style={{ fontSize: 11.5, color: c.ink3, fontStyle: "italic" }}>
+          {isMesh ? "Couldn't find this heading in NLM's lookup — no entry terms available." : "Couldn't load the thesaurus snapshot. Check your connection and try again."}
+        </div>
+      ) : !panel.terms?.length && !panel.bt?.length && !panel.nt?.length ? (
+        <div style={{ fontSize: 11.5, color: c.ink3, fontStyle: "italic" }}>
+          {isMesh ? "NLM lists no entry terms or hierarchy for this heading." : "The Thesaurus lists no synonyms or broader/narrower terms for this descriptor."}
+        </div>
+      ) : (
+        <>
+          {!!panel.terms?.length && <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{panel.terms.map(kwBtn)}</div>}
+          {hierRow("broader descriptors", panel.bt, "bt")}
+          {hierRow("narrower descriptors", panel.nt, "nt")}
+        </>
+      )}
     </div>
   );
 }
@@ -527,6 +630,8 @@ function ReviewSeed() {
   const [kwFields, setKwFields] = useState<Record<string, string>>({});
   const [guideOpen, setGuideOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [synPanel, setSynPanel] = useState<SynPanelState | null>(null);
+  const [synExpanded, setSynExpanded] = useState<{ bt?: boolean; nt?: boolean }>({});
 
   useEffect(() => { mcpApp.connect(); }, []);
   useEffect(() => { setQuery(""); setPasteText(""); setArticles([]); setSelected(new Set()); setError(""); setPage(1); }, [source, mode]);
@@ -535,6 +640,26 @@ function ReviewSeed() {
   const poolKey = (t: "keyword" | "vocab" | "query"): keyof Pool =>
     t === "keyword" ? "keywords" : t === "vocab" ? (source === "eric" ? "eric" : "mesh") : (source === "eric" ? "ericQueries" : source === "trials" ? "ctQueries" : "queries");
   const addToPool = (t: "keyword" | "vocab" | "query", term: string) => setPool(p => { const key = poolKey(t); return p[key].includes(term) ? p : { ...p, [key]: [...p[key], term] }; });
+  // Vocab-explicit variants for the synonyms panel — a MeSH/ERIC broader/
+  // narrower term always belongs to that vocab's pool regardless of which
+  // source is currently toggled (the Harvest tab shows all pools at once).
+  const addKeyword = (term: string) => setPool(p => p.keywords.includes(term) ? p : { ...p, keywords: [...p.keywords, term] });
+  const addVocabTerm = (vocab: "mesh" | "eric", term: string) => setPool(p => p[vocab].includes(term) ? p : { ...p, [vocab]: [...p[vocab], term] });
+
+  // "≈" synonyms panel on pool chips — entry terms + broader/narrower for a
+  // harvested MeSH/ERIC term, sourced from the same tool the Vocabulary
+  // Explorer tab uses, but surfaced right on the pool chip that grew it.
+  const showSynonyms = async (term: string, vocab: "mesh" | "eric") => {
+    if (synPanel?.term === term && synPanel?.vocab === vocab) { setSynPanel(null); return; }
+    setSynPanel({ term, vocab, loading: true });
+    setSynExpanded({});
+    try {
+      const d = await callTool<{ terms: string[]; bt: string[]; nt: string[]; error?: string }>("reviewseed_vocab_details", { vocab, label: term });
+      setSynPanel(p => (p?.term === term && p?.vocab === vocab) ? { term, vocab, loading: false, terms: d.terms, bt: d.bt, nt: d.nt, missing: !!d.error } : p);
+    } catch {
+      setSynPanel(p => (p?.term === term && p?.vocab === vocab) ? { term, vocab, loading: false, terms: [], bt: [], nt: [], missing: true } : p);
+    }
+  };
 
   const applyResult = (r: { articles: Article[]; total?: number; error?: string }) => {
     if (r.error) { setError(r.error); setArticles([]); return; }
@@ -743,8 +868,32 @@ function ReviewSeed() {
             ) : (
               <>
                 {pool.keywords.length > 0 && <div style={{ marginBottom: 14 }}><div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 4 }}>Keywords ({pool.keywords.length})</div><div style={{ display: "flex", flexWrap: "wrap" }}>{pool.keywords.map(t => <Chip key={t} c={c} term={t} type="keyword" field={kwFields[t]} onFieldChange={setField} onRemove={t => setPool(p => ({ ...p, keywords: p.keywords.filter(x => x !== t) }))} />)}</div></div>}
-                {pool.mesh.length > 0 && <div style={{ marginBottom: 14 }}><div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 4 }}>MeSH Headings ({pool.mesh.length})</div><div style={{ display: "flex", flexWrap: "wrap" }}>{pool.mesh.map(t => <Chip key={t} c={c} term={t} type="mesh" onRemove={t => setPool(p => ({ ...p, mesh: p.mesh.filter(x => x !== t) }))} />)}</div></div>}
-                {pool.eric.length > 0 && <div style={{ marginBottom: 14 }}><div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 4 }}>ERIC Descriptors ({pool.eric.length})</div><div style={{ display: "flex", flexWrap: "wrap" }}>{pool.eric.map(t => <Chip key={t} c={c} term={t} type="eric" onRemove={t => setPool(p => ({ ...p, eric: p.eric.filter(x => x !== t) }))} />)}</div></div>}
+                {pool.mesh.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 4 }}>MeSH Headings ({pool.mesh.length})</div>
+                    <div style={{ display: "flex", flexWrap: "wrap" }}>
+                      {pool.mesh.map(t => (
+                        <Chip key={t} c={c} term={t} type="mesh"
+                          onDetails={() => showSynonyms(t, "mesh")} detailsOpen={synPanel?.term === t && synPanel?.vocab === "mesh"}
+                          onRemove={t => setPool(p => ({ ...p, mesh: p.mesh.filter(x => x !== t) }))} />
+                      ))}
+                    </div>
+                    {synPanel?.vocab === "mesh" && <SynPanel c={c} panel={synPanel} expanded={synExpanded} setExpanded={setSynExpanded} pool={pool} onAddKeyword={addKeyword} onAddVocab={addVocabTerm} />}
+                  </div>
+                )}
+                {pool.eric.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 4 }}>ERIC Descriptors ({pool.eric.length})</div>
+                    <div style={{ display: "flex", flexWrap: "wrap" }}>
+                      {pool.eric.map(t => (
+                        <Chip key={t} c={c} term={t} type="eric"
+                          onDetails={() => showSynonyms(t, "eric")} detailsOpen={synPanel?.term === t && synPanel?.vocab === "eric"}
+                          onRemove={t => setPool(p => ({ ...p, eric: p.eric.filter(x => x !== t) }))} />
+                      ))}
+                    </div>
+                    {synPanel?.vocab === "eric" && <SynPanel c={c} panel={synPanel} expanded={synExpanded} setExpanded={setSynExpanded} pool={pool} onAddKeyword={addKeyword} onAddVocab={addVocabTerm} />}
+                  </div>
+                )}
                 {([["queries", "PubMed advanced snippets"], ["ericQueries", "ERIC advanced snippets"], ["ctQueries", "Trials advanced snippets"]] as [keyof Pool, string][]).map(([key, label]) => pool[key].length > 0 && (
                   <div key={key} style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 4 }}>{label} ({pool[key].length})</div>
