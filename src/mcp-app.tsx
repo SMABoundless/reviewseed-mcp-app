@@ -806,6 +806,15 @@ function ReviewSeed() {
           {error && <div role="alert" style={{ marginTop: 10, padding: "8px 12px", background: c.errorBg, borderRadius: 3, color: c.error, fontSize: 12, fontWeight: 500 }}>{error}</div>}
         </div>
 
+        {mode !== "vocab" && articles.length === 0 && !loading && (
+          <div style={{ padding: "48px 20px", textAlign: "center", border: `1px dashed ${c.line}`, borderRadius: 4, background: c.surface, marginBottom: 24 }}>
+            <div style={{ color: c.ink3, fontSize: 11, marginBottom: 12, fontFamily: MONO, letterSpacing: 0.5 }}>no_records_loaded</div>
+            <div style={{ fontFamily: SERIF, fontSize: 16, color: c.ink2, maxWidth: 440, margin: "0 auto", lineHeight: 1.55, fontWeight: 400 }}>
+              Search {SOURCE_LABEL[source]}, use Advanced Search with field-specific queries, {source === "trials" ? "paste trial IDs or references" : "paste a reference list"}, or browse the {source === "eric" ? "ERIC Thesaurus" : "MeSH vocabulary"} to begin building your term pool.
+            </div>
+          </div>
+        )}
+
         {mode !== "vocab" && articles.length > 0 && (
           <section style={{ marginBottom: 24 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
