@@ -15,6 +15,7 @@ import {
 import {
   ERIC_ADV_FIELDS, ericAssembleTerm, ericAuthorSearch, ericLookup, ericSearch,
 } from "./server/eric.js";
+import { withMatchedVia } from "./server/match.js";
 import { meshVocabDetails, meshVocabSearch } from "./server/mesh.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
@@ -39,6 +40,12 @@ const poolSchema = z.object({
   ericQueries: z.array(z.string()).default([]),
   ctQueries: z.array(z.string()).default([]),
 });
+// One shared vocabulary of 4 field tags across all three sources — NOT a
+// per-source field list. Each adapter re-translates the same tag into its
+// own native syntax: pubmed emits "[tag]"; eric maps ti->title:/ab->description:/
+// all->bare/tiab->title+description OR; trials maps ti->AREA[BriefTitle],
+// anything else->bare (Essie's default search already spans title+summary+conditions).
+const KW_FIELD_TAGS = "tiab (title/abstract), ti (title only), ab (abstract only — no-op for trials), all (no field restriction)";
 const kwFieldsSchema = z.record(z.string(), z.string()).default({});
 
 function textResult(payload: unknown) {
@@ -63,54 +70,87 @@ export function createServer(): McpServer {
         "the MeSH or ERIC Thesaurus vocabulary (synonyms, scope notes, broader/narrower hierarchy), harvest MeSH " +
         "headings/keywords/descriptors from articles, or build a Boolean or framework-structured (PICO, PECO, " +
         "SPIDER, PCC, and 6 others) search string.",
-      inputSchema: {},
+      inputSchema: {
+        source: sourceEnum.optional().describe("Pre-select a source (defaults to PubMed) instead of opening blank"),
+        query: z.string().optional().describe("Pre-fill and immediately run this search — opens straight to results instead of a blank panel"),
+      },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async () => ({
+    async ({ source, query }) => ({
       content: [{
         type: "text" as const,
         text: [
-          "ReviewSeed is open — three sources (PubMed, ClinicalTrials.gov, ERIC), a MeSH/ERIC vocabulary explorer, ",
-          "and ten search-strategy frameworks (PICO, PICOS, PECO, SPICE, CIMO, SPIDER, PICo, PCC, ECLIPSE, PIRD) ",
-          "plus a Custom builder.",
+          query
+            ? `ReviewSeed is open, searching ${SOURCE_LABEL[source ?? "pubmed"]} for "${query}".`
+            : "ReviewSeed is open — three sources (PubMed, ClinicalTrials.gov, ERIC), a MeSH/ERIC vocabulary explorer, " +
+              "and ten search-strategy frameworks (PICO, PICOS, PECO, SPICE, CIMO, SPIDER, PICo, PCC, ECLIPSE, PIRD) " +
+              "plus a Custom builder.",
           "",
           "If the UI did not render inline, call these tools directly instead — no UI required:",
-          "  reviewseed_search / reviewseed_lookup / reviewseed_advanced_search — find records",
+          "  reviewseed_search / reviewseed_lookup / reviewseed_advanced_search — find records (these also render inline as the interactive picker when the UI is available)",
           "  reviewseed_vocab_search / reviewseed_vocab_details — explore MeSH or ERIC Thesaurus terms",
           "  reviewseed_author_search — everything a given author published",
+          "  reviewseed_compare_queries — run 2-6 query variants at once and diff counts/unique records",
           "  reviewseed_assemble_query — build a Boolean or framework (PICO/PECO/...) string from a term pool, headlessly",
         ].join("\n"),
       }],
     }),
   );
 
-  // ── Search ─────────────────────────────────────────────────────────────────
-  server.tool(
+  // ── Search — shares reviewseed_open's resourceUri (SDK-documented pattern:
+  // multiple tools can open/refresh the same app instance). When the UI is
+  // available, calling this directly renders the interactive result picker
+  // instead of flat JSON; the panel reads this call's own arguments/result
+  // via app.ontoolinput/ontoolresult to hydrate itself. Still fully usable
+  // headlessly — the JSON below is always returned regardless of rendering. ──
+  registerAppTool(
+    server,
     "reviewseed_search",
-    "Search PubMed, ClinicalTrials.gov, or ERIC and return record metadata including MeSH headings/ERIC descriptors and keywords.",
     {
-      source: sourceEnum.describe("Which database to search"),
-      query: z.string().describe("Search query, in the syntax of the chosen source"),
-      page: z.number().int().min(1).max(5).default(1).describe("Page number (1-indexed, max 5)"),
-      pageSize: z.number().int().min(1).max(25).default(10).describe("Results per page (ignored for trials, which pages at 10)"),
+      title: "Search ReviewSeed",
+      description: "Search PubMed, ClinicalTrials.gov, or ERIC and return record metadata including MeSH headings/ERIC descriptors and keywords. Renders as an interactive result picker when the UI is available.",
+      inputSchema: {
+        source: sourceEnum.describe("Which database to search"),
+        query: z.string().describe(
+          "Search query, in the syntax of the chosen source. Trailing-* truncation (e.g. \"teen*\") is verified to " +
+          "expand correctly on PubMed and ERIC (Solr honors it). It does NOT work as truncation on ClinicalTrials.gov " +
+          "— Essie's query.term treats \"*\" as a literal character, so a truncated term returns far FEWER matches " +
+          "than the bare word (verified: \"diabet*\" → ~76 studies vs. \"diabetes\" → ~35,000). For Trials, search the " +
+          "bare term instead of truncating.",
+        ),
+        page: z.number().int().min(1).max(5).default(1).describe("Page number (1-indexed, max 5)"),
+        pageSize: z.number().int().min(1).max(25).default(10).describe("Results per page (ignored for trials, which pages at 10)"),
+        matchTerms: z.array(z.string()).optional().describe(
+          "Pool terms this query was built from (e.g. the OR'd terms in a Boolean/framework string). When given, " +
+          "each result gets a `matchedVia` array — the subset of these terms actually found in that record (MeSH/" +
+          "descriptor/keyword exact match, or free-text substring in title/abstract) — instead of leaving you to " +
+          "cross-reference the full descriptor list by hand to see why it matched.",
+        ),
+      },
+      _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async ({ source, query, page, pageSize }) => {
+    async ({ source, query, page, pageSize, matchTerms }) => {
       try {
         const r = source === "eric" ? await ericSearch(query, page, pageSize)
           : source === "trials" ? await ctSearch(query, page)
           : await pubmedSearch(query, page, pageSize);
-        return textResult(r);
+        return textResult({ ...r, articles: withMatchedVia(r.articles, matchTerms) });
       } catch (e) { return errorResult(e); }
     },
   );
 
-  // ── Lookup (paste citations) ───────────────────────────────────────────────
-  server.tool(
+  // ── Lookup (paste citations) — same shared-resourceUri pattern as search ──
+  registerAppTool(
+    server,
     "reviewseed_lookup",
-    "Look up records by pasted text containing PMIDs/DOIs (PubMed), EJ/ED accession numbers (ERIC), or NCT ids (ClinicalTrials.gov); title text is a best-effort fallback for all three.",
     {
-      source: sourceEnum,
-      text: z.string().describe("Pasted reference list"),
+      title: "Look up ReviewSeed citations",
+      description: "Look up records by pasted text containing PMIDs/DOIs (PubMed), EJ/ED accession numbers (ERIC), or NCT ids (ClinicalTrials.gov); title text is a best-effort fallback for all three. Renders as an interactive result picker when the UI is available.",
+      inputSchema: {
+        source: sourceEnum,
+        text: z.string().describe("Pasted reference list"),
+      },
+      _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async ({ source, text }) => {
       try {
@@ -122,20 +162,28 @@ export function createServer(): McpServer {
     },
   );
 
-  // ── Advanced search ────────────────────────────────────────────────────────
-  server.tool(
+  // ── Advanced search — same shared-resourceUri pattern as search/lookup ────
+  registerAppTool(
+    server,
     "reviewseed_advanced_search",
-    "List the field-specific search options for a source, or assemble+run a field-specific query built from multiple rows " +
-    "combined with AND/OR/NOT (mirrors each database's own advanced-search builder).",
     {
-      source: sourceEnum,
-      rows: z.array(z.object({
-        field: z.string().describe("Field tag — call with an empty rows array first to see valid tags for this source"),
-        value: z.string(),
-        op: z.enum(["AND", "OR", "NOT"]).optional().describe("Operator joining this row to the previous one; ignored on the first row"),
-      })).default([]),
-      run: z.boolean().default(true).describe("Also execute the assembled query against the source"),
-      page: z.number().int().min(1).max(5).default(1),
+      title: "Advanced search ReviewSeed",
+      description: "List the field-specific search options for a source, or assemble+run a field-specific query built from multiple rows " +
+        "combined with AND/OR/NOT (mirrors each database's own advanced-search builder). Renders as an interactive result picker when the UI is available.",
+      inputSchema: {
+        source: sourceEnum,
+        rows: z.array(z.object({
+          field: z.string().describe("Field tag — call with an empty rows array first to see valid tags for this source"),
+          value: z.string().describe(
+            "Trailing-* truncation works on PubMed/ERIC but not ClinicalTrials.gov (Essie treats \"*\" literally, " +
+            "not as a wildcard) — see reviewseed_search's query description for the verified counts.",
+          ),
+          op: z.enum(["AND", "OR", "NOT"]).optional().describe("Operator joining this row to the previous one; ignored on the first row"),
+        })).default([]),
+        run: z.boolean().default(true).describe("Also execute the assembled query against the source"),
+        page: z.number().int().min(1).max(5).default(1),
+      },
+      _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async ({ source, rows, run, page }) => {
       try {
@@ -217,6 +265,50 @@ export function createServer(): McpServer {
     },
   );
 
+  // ── Compare query variants ─────────────────────────────────────────────────
+  server.tool(
+    "reviewseed_compare_queries",
+    "Run 2-6 query variants against the same source in one call — for tuning a tight-vs-broad search string, or " +
+    "checking whether adding a term meaningfully changes a result set. Returns each variant's real total count " +
+    "(from the source's own count, not sampled) plus which ids in a top-ranked sample are unique to that variant. " +
+    "The uniqueness comparison is a SAMPLE of top matches, not a full-corpus diff — two variants with identical " +
+    "totals can still sample as 100% unique to each other if they're retrieving different (equally-sized) result " +
+    "sets. ClinicalTrials.gov always samples exactly 10 per variant (its API's fixed page size); PubMed/ERIC honor " +
+    "sampleSize up to 50.",
+    {
+      source: sourceEnum,
+      queries: z.array(z.object({
+        label: z.string().describe('Short name for this variant, e.g. "tight" or "broad"'),
+        query: z.string(),
+      })).min(2).max(6),
+      sampleSize: z.number().int().min(5).max(50).default(20).describe("Top-ranked ids per variant to sample for uniqueness (ignored for trials, fixed at 10)"),
+    },
+    async ({ source, queries, sampleSize }) => {
+      // Promise.allSettled, not .all: a transient failure on one variant
+      // (rate limit, network blip) shouldn't blank out the others' results.
+      const settled = await Promise.allSettled(queries.map(async q => {
+        const r = source === "eric" ? await ericSearch(q.query, 1, sampleSize)
+          : source === "trials" ? await ctSearch(q.query, 1)
+          : await pubmedSearch(q.query, 1, sampleSize);
+        return { label: q.label, query: q.query, total: r.total, error: r.error, ids: r.articles.map(a => a.pmid) };
+      }));
+      const results = settled.map((s, i) => s.status === "fulfilled" ? s.value : {
+        label: queries[i].label, query: queries[i].query, total: 0,
+        error: s.reason instanceof Error ? s.reason.message : String(s.reason), ids: [] as string[],
+      });
+      const idSets = results.map(r => new Set(r.ids));
+      const comparison = results.map((r, i) => ({
+        label: r.label,
+        query: r.query,
+        total: r.total,
+        error: r.error,
+        sampled: r.ids.length,
+        uniqueToThisVariant: r.ids.filter(id => !idSets.some((s, j) => j !== i && s.has(id))),
+      }));
+      return textResult({ comparison });
+    },
+  );
+
   // ── Query assembly — the one tool useful even with the UI never opened ────
   server.tool(
     "reviewseed_assemble_query",
@@ -227,7 +319,10 @@ export function createServer(): McpServer {
     {
       source: sourceEnum,
       pool: poolSchema,
-      kwFields: kwFieldsSchema.describe("Per-keyword PubMed field tag (tiab/ti/ab/all); defaults to tiab"),
+      kwFields: kwFieldsSchema.describe(
+        `Per-keyword field tag; defaults to tiab. Same 4 tags for every source — ${KW_FIELD_TAGS} — ` +
+        "each source re-translates them into its own native syntax (PubMed bracket tags, ERIC field prefixes, or ClinicalTrials.gov AREA[...] operators). Not ERIC's or Trials' own field names.",
+      ),
       mode: z.enum(["boolean", "framework"]).default("boolean"),
       booleanOpts: z.object({
         kwOp: z.enum(["OR", "AND"]).default("OR"),

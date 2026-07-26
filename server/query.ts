@@ -46,8 +46,11 @@ export function buildBooleanQuery(
   }
   const queries = target === "eric" ? pool.ericQueries : target === "trials" ? pool.ctQueries : pool.queries;
   // Advanced-search snippets may contain their own AND/OR/NOT — always
-  // parenthesize so the join operator can't rebind them.
-  queries.forEach(q => parts.push(`(${q})`));
+  // parenthesize so the join operator can't rebind them. Skip the wrap only
+  // when a single snippet is the entire query (nothing to protect against),
+  // so a lone pooled query comes out paste-ready with no stray parens.
+  const bareQuery = parts.length === 0 && queries.length === 1;
+  queries.forEach(q => parts.push(bareQuery ? q : `(${q})`));
   return parts.join(` ${joinOp} `);
 }
 
@@ -107,7 +110,10 @@ export function buildFrameworkQuery(
       const inner = vocab.map(t => vocabTerm(t, target)).join(" OR ");
       parts.push(vocab.length > 1 ? `(${inner})` : inner);
     }
-    qs.forEach(q => parts.push(`(${q})`));
-    return parts.length ? `(${parts.join(" OR ")})` : null;
+    const bareQuery = parts.length === 0 && qs.length === 1;
+    qs.forEach(q => parts.push(bareQuery ? q : `(${q})`));
+    // A bucket with exactly one atomic part needs no outer grouping either —
+    // only wrap when there's an internal OR to protect from the top-level AND.
+    return parts.length > 1 ? `(${parts.join(" OR ")})` : (parts[0] ?? null);
   }).filter((x): x is string => x !== null).join("\nAND ");
 }

@@ -633,8 +633,64 @@ function ReviewSeed() {
   const [synPanel, setSynPanel] = useState<SynPanelState | null>(null);
   const [synExpanded, setSynExpanded] = useState<{ bt?: boolean; nt?: boolean }>({});
 
-  useEffect(() => { mcpApp.connect(); }, []);
-  useEffect(() => { setQuery(""); setPasteText(""); setArticles([]); setSelected(new Set()); setError(""); setPage(1); }, [source, mode]);
+  // Session-aware open: reviewseed_search/lookup/advanced_search share
+  // reviewseed_open's ui:// resource (the SDK's documented multi-tool-one-
+  // resource pattern), so calling any of them directly — without ever going
+  // through this UI's own callServerTool — opens or refreshes this same
+  // panel. app.ontoolinput carries that call's arguments; app.ontoolresult
+  // carries its already-computed result (reusing it avoids a duplicate
+  // network round-trip); app.getHostContext().toolInfo.tool.name says which
+  // of the four tools triggered this instance (ontoolinput/ontoolresult
+  // themselves don't include the tool name).
+  const skipNextResetRef = useRef(false);
+  useEffect(() => {
+    let toolArgs: any = null;
+    let toolResult: any = null;
+    let applied = false;
+
+    const tryApply = () => {
+      if (applied) return;
+      const toolName = mcpApp.getHostContext()?.toolInfo?.tool?.name;
+      if (!toolName) return;
+
+      if (toolName === "reviewseed_open") {
+        if (!toolArgs) return; // still wait for ontoolinput, even if it turns out empty
+        applied = true;
+        const src: Source = toolArgs.source ?? "pubmed";
+        skipNextResetRef.current = true;
+        setSource(src);
+        if (toolArgs.query) { setMode("search"); setQuery(toolArgs.query); runSearchWith(src, toolArgs.query); }
+        return;
+      }
+
+      if (!toolArgs || !toolResult) return; // need both before there's anything to hydrate
+      applied = true;
+      const parsed = (() => { try { return JSON.parse(toolResult.content?.[0]?.text ?? "{}"); } catch { return {}; } })();
+      const src: Source = toolArgs.source ?? "pubmed";
+      skipNextResetRef.current = true;
+
+      if (toolName === "reviewseed_search") {
+        setSource(src); setMode("search"); setQuery(toolArgs.query ?? ""); setPage(toolArgs.page ?? 1);
+        applyResult(parsed);
+      } else if (toolName === "reviewseed_lookup") {
+        setSource(src); setMode("paste"); setPasteText(toolArgs.text ?? "");
+        applyResult(parsed);
+        if (parsed.articles?.length) setSelected(new Set(parsed.articles.map((a: Article) => a.pmid)));
+      } else if (toolName === "reviewseed_advanced_search") {
+        setSource(src); setMode("search");
+        if (parsed.query) setQuery(parsed.query);
+        if (parsed.articles) applyResult(parsed);
+      }
+    };
+
+    mcpApp.ontoolinput = params => { toolArgs = params.arguments; tryApply(); };
+    mcpApp.ontoolresult = params => { toolResult = params; tryApply(); };
+    mcpApp.connect().then(tryApply).catch(() => { /* no host bridge available; tryApply's toolName guard already no-ops safely */ });
+  }, []);
+  useEffect(() => {
+    if (skipNextResetRef.current) { skipNextResetRef.current = false; return; }
+    setQuery(""); setPasteText(""); setArticles([]); setSelected(new Set()); setError(""); setPage(1);
+  }, [source, mode]);
 
   const setField = (term: string, field: string) => setKwFields(p => ({ ...p, [term]: field }));
   const poolKey = (t: "keyword" | "vocab" | "query"): keyof Pool =>
@@ -667,13 +723,16 @@ function ReviewSeed() {
     if (!r.articles.length) setError("No results found.");
   };
 
-  const doSearch = async (targetPage = 1) => {
-    if (!query.trim()) return;
+  // Explicit-args variant so the initial-hydration effect (which fires before
+  // setSource/setQuery have flushed into the `source`/`query` closures below)
+  // can run a search without racing React's batched state updates.
+  const runSearchWith = async (src: Source, q: string, targetPage = 1) => {
     setLoading(true); setError(""); setSelected(new Set());
-    try { applyResult(await callTool("reviewseed_search", { source, query, page: targetPage, pageSize: 10 })); setPage(targetPage); }
+    try { applyResult(await callTool("reviewseed_search", { source: src, query: q, page: targetPage, pageSize: 10 })); setPage(targetPage); }
     catch { setError("Search failed. Check your connection and try again."); }
     setLoading(false);
   };
+  const doSearch = (targetPage = 1) => { if (query.trim()) return runSearchWith(source, query, targetPage); };
 
   const doLookup = async () => {
     if (!pasteText.trim()) return;
