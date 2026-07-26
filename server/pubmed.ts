@@ -8,10 +8,20 @@ const PUBMED_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const NCBI_TOOL_PARAMS = `tool=ReviewSeedMCP&email=${encodeURIComponent("smadams@northwestern.edu")}`;
 const limit = createLimiter();
 
-async function ncbiFetch(url: string): Promise<Response> {
+// NCBI's unauthenticated cap is 3 req/sec; our limiter paces starts at ~2.85/sec
+// with zero margin, so an occasional 429 is expected under sustained use (e.g.
+// several rapid tool calls in one session), not a sign anything is broken.
+// One retry with a short backoff clears the vast majority of these — verified
+// live: a solo sequential run still hit one 429 in 10 calls with no retry.
+async function ncbiFetch(url: string, attempt = 0): Promise<Response> {
   await limit();
   const sep = url.includes("?") ? "&" : "?";
-  return fetch(url + sep + NCBI_TOOL_PARAMS);
+  const r = await fetch(url + sep + NCBI_TOOL_PARAMS);
+  if (r.status === 429 && attempt < 1) {
+    await new Promise(res => setTimeout(res, 600));
+    return ncbiFetch(url, attempt + 1);
+  }
+  return r;
 }
 
 const stripTags = (s: string) => (s || "").replace(/<[^>]+>/g, "");
@@ -37,6 +47,12 @@ async function esearch(term: string, retstart = 0, retmax = 10): Promise<{ ids: 
 async function efetchXml(pmids: string[]): Promise<Record<string, Article>> {
   if (!pmids.length) return {};
   const r = await ncbiFetch(`${PUBMED_BASE}/efetch.fcgi?db=pubmed&id=${pmids.join(",")}&rettype=xml&retmode=xml`);
+  // Unlike esearch (JSON, checked below), this was never checking r.ok before
+  // parsing — a 429/5xx response (empty or non-XML body) fed straight into
+  // DOMParser produced a cryptic "missing root element" instead of a clear
+  // error. Confirmed live: this is what a transient NCBI rate-limit blip
+  // looked like before this fix.
+  if (!r.ok) throw new Error(`efetch HTTP ${r.status}`);
   const xml = await r.text();
   const doc = new DOMParser().parseFromString(xml, "text/xml");
   const out: Record<string, Article> = {};

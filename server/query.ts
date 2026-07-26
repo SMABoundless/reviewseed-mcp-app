@@ -26,6 +26,23 @@ function vocabTerm(term: string, target: Source): string {
   return `"${term}"[MeSH Terms]`;
 }
 
+// A pooled query snippet that's already a single fully-enclosing parenthesized
+// group (e.g. built elsewhere as "(A OR B)") doesn't need re-wrapping — doing
+// so anyway produces visible double parens "((A OR B))". Checks that the
+// FIRST "(" doesn't close until the LAST character, i.e. the whole string is
+// one group, not "(A) OR (B)" (which starts with "(" and ends with ")" too,
+// but isn't a single enclosing unit and still needs the outer wrap).
+function isFullyWrapped(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 2 || t[0] !== "(" || t[t.length - 1] !== ")") return false;
+  let depth = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "(") depth++;
+    else if (t[i] === ")") { depth--; if (depth === 0) return i === t.length - 1; }
+  }
+  return false;
+}
+
 export function buildBooleanQuery(
   pool: Pool,
   kwFields: KwFields,
@@ -50,7 +67,7 @@ export function buildBooleanQuery(
   // when a single snippet is the entire query (nothing to protect against),
   // so a lone pooled query comes out paste-ready with no stray parens.
   const bareQuery = parts.length === 0 && queries.length === 1;
-  queries.forEach(q => parts.push(bareQuery ? q : `(${q})`));
+  queries.forEach(q => parts.push(bareQuery || isFullyWrapped(q) ? q : `(${q})`));
   return parts.join(` ${joinOp} `);
 }
 
@@ -111,7 +128,7 @@ export function buildFrameworkQuery(
       parts.push(vocab.length > 1 ? `(${inner})` : inner);
     }
     const bareQuery = parts.length === 0 && qs.length === 1;
-    qs.forEach(q => parts.push(bareQuery ? q : `(${q})`));
+    qs.forEach(q => parts.push(bareQuery || isFullyWrapped(q) ? q : `(${q})`));
     // A bucket with exactly one atomic part needs no outer grouping either —
     // only wrap when there's an internal OR to protect from the top-level AND.
     return parts.length > 1 ? `(${parts.join(" OR ")})` : (parts[0] ?? null);

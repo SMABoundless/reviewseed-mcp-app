@@ -284,18 +284,25 @@ export function createServer(): McpServer {
       sampleSize: z.number().int().min(5).max(50).default(20).describe("Top-ranked ids per variant to sample for uniqueness (ignored for trials, fixed at 10)"),
     },
     async ({ source, queries, sampleSize }) => {
-      // Promise.allSettled, not .all: a transient failure on one variant
-      // (rate limit, network blip) shouldn't blank out the others' results.
-      const settled = await Promise.allSettled(queries.map(async q => {
-        const r = source === "eric" ? await ericSearch(q.query, 1, sampleSize)
-          : source === "trials" ? await ctSearch(q.query, 1)
-          : await pubmedSearch(q.query, 1, sampleSize);
-        return { label: q.label, query: q.query, total: r.total, error: r.error, ids: r.articles.map(a => a.pmid) };
-      }));
-      const results = settled.map((s, i) => s.status === "fulfilled" ? s.value : {
-        label: queries[i].label, query: queries[i].query, total: 0,
-        error: s.reason instanceof Error ? s.reason.message : String(s.reason), ids: [] as string[],
-      });
+      // Sequential, not concurrent: firing 2-6 esearch+efetch pipelines at
+      // once against NCBI (whose unauthenticated cap is a tight 3 req/sec)
+      // measurably increases 429s beyond what a solo reviewseed_search call
+      // sees, since overlapping in-flight requests aren't fully avoided by
+      // request-start pacing alone — confirmed live: a concurrent pair failed
+      // where the same two queries run one after another mostly didn't. Each
+      // variant still gets its own try/catch so one transient failure can't
+      // blank out the others.
+      const results: Array<{ label: string; query: string; total: number; error?: string; ids: string[] }> = [];
+      for (const q of queries) {
+        try {
+          const r = source === "eric" ? await ericSearch(q.query, 1, sampleSize)
+            : source === "trials" ? await ctSearch(q.query, 1)
+            : await pubmedSearch(q.query, 1, sampleSize);
+          results.push({ label: q.label, query: q.query, total: r.total, error: r.error, ids: r.articles.map(a => a.pmid) });
+        } catch (e) {
+          results.push({ label: q.label, query: q.query, total: 0, error: e instanceof Error ? e.message : String(e), ids: [] });
+        }
+      }
       const idSets = results.map(r => new Set(r.ids));
       const comparison = results.map((r, i) => ({
         label: r.label,
