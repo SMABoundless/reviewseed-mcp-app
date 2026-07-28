@@ -3,42 +3,63 @@
 ```bash
 npm test              # fast, offline, deterministic — run this constantly
 npm run test:live     # hits the real APIs — run before releases / when upstream may have changed
+npm run snapshot      # regenerate the generated fixtures after changing shared config/parsers
 ```
 
-`npm test` typechecks, then runs the unit + integration suites (~1.5s, no network).
+`npm test` typechecks, then runs the unit + integration suites (113 tests, ~1.7s, no network).
 
 ## Layout
 
 | Path | What it covers | Network |
 |---|---|---|
 | `unit/query-internals.test.ts` | Query-builder edge cases local to this repo; framework config invariants | none |
-| `unit/parity.test.ts` | **Cross-repo parity** — canonical fixtures vs. this repo's builders | none |
+| `unit/parity.test.ts` | **Cross-repo** — query assembly (Boolean + framework) | none |
+| `unit/formatter-parity.test.ts` | **Cross-repo** — per-source term formatters | none |
+| `unit/shared-surface.test.ts` | **Cross-repo** — field lists + framework config snapshot | none |
+| `unit/parser-parity.test.ts` | **Cross-repo** — upstream-response parsers | none |
 | `unit/match.test.ts` | `matchedVia` word-boundary matching, regex escaping, immutability | none |
 | `unit/eric-thesaurus.test.ts` | Shipped ERIC Thesaurus snapshot: synonym search, ranking, hierarchy | none (local asset) |
 | `integration/tools.test.ts` | Real MCP client ↔ server over `InMemoryTransport`, all HTTP stubbed | stubbed |
 | `live/smoke.test.ts` | Upstream API contracts still match what the adapters parse | **real** |
 
-## Cross-repo parity (the important one)
-
-`fixtures/query-parity.json` is the **single source of truth** for shared query-assembly
-behavior across both ReviewSeed codebases:
-
-- **This repo** runs it against `server/query.ts` (`unit/parity.test.ts`)
-- **The website** runs the same file against `index.html`'s page-global builders
-  (`~/code/pubmedseed/tests/verify-parity.mjs`, via Playwright `page.evaluate`)
+## Cross-repo parity (the important part)
 
 Much of this repo's server code was originally ported verbatim from the website, so the
-two drift easily — every bug in the 2026-07-26 QA cycle existed in both. These fixtures
-turn drift into a red test instead of a discovery months later.
+two drift easily — every bug in the 2026-07-26 QA cycle existed in both, and building
+these checks immediately surfaced two more (a missing PubMed field here, and divergent
+MeSH/keyword handling there).
 
-The fixtures are **not duplicated** into the website repo on purpose: a stale copy would
-pass green while being out of sync. The website reads this file directly, and **skips
-loudly** (never silently passes) if this repo isn't checked out. Point it elsewhere with
+**This repo owns the canonical fixtures.** The website reads them directly and **skips
+loudly** (never silently passes) if this repo isn't checked out — they're deliberately not
+duplicated, since a stale copy would pass green while out of sync. Point elsewhere with
 `REVIEWSEED_MCP_APP=/path/to/reviewseed-mcp-app`.
 
-**When changing shared query behavior: add the case to the fixtures first, then make both
-repos pass it.** If a case is genuinely MCP-app-specific, put it in `unit/query-internals.test.ts`
-instead so the website isn't held to it.
+Three different shapes, because different kinds of shared surface need different tests:
+
+| Fixture | Shape | Why |
+|---|---|---|
+| `query-parity.json` | input → expected string | **Behavior.** Pin the expected output independently of both implementations. |
+| `formatter-parity.json` | input → expected string | Same, for the leaf term formatters (`ericKwTerm`, `ctMeshTerm`, `*AssembleTerm`…). |
+| `shared-surface.json` | **generated** snapshot | **Data** (field lists, framework config). Compared directly — no hand-maintained third copy, so adding a field to one repo and not the other fails immediately. |
+| `parser-inputs.json` + `parser-expected.json` | canned upstream bytes → expected `Article` | **Parsers.** Feeding byte-identical payloads to both is the only way to separate real divergence from an upstream difference. |
+
+The last two are **generated** by `npm run snapshot`. Their guard tests fail with "stale"
+if the code changes without regenerating — that failure, plus the website's matching
+failure, is the drift signal.
+
+**Workflow when changing shared behavior:** add/update the fixture case first, run
+`npm run snapshot` if it's a generated one, then make both repos pass. Behavior genuinely
+unique to this app belongs in `unit/query-internals.test.ts` instead, so the website isn't
+held to it.
+
+### Known, accepted divergences
+
+- This app's PubMed articles set `src`, `eric` and `url`; the website's omit them (PubMed
+  is its implicit default and its render layer compensates). The parser parity check
+  compares the fields carrying parsed content and *reports* the shape difference.
+- Not parity-checked on purpose: `pubmedSearch`'s orchestration. The website's takes
+  `sort`/`dateFilter` and does reverse-pagination; this app's doesn't. The shared part is
+  `efetchXml`'s parsing, not the flow around it.
 
 ## Why integration tests run in-process
 

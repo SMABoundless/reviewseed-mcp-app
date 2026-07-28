@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "CANONICAL upstream payloads for cross-repo parser parity.",
+    "",
+    "Both codebases parse the SAME raw upstream response into the shared Article",
+    "shape. These are the inputs; parser-expected.json holds the agreed output.",
+    "Feeding identical bytes to both parsers is the only way to tell a real",
+    "divergence from an upstream difference.",
+    "",
+    "Payloads are trimmed but structurally faithful to real responses — including",
+    "the awkward parts each parser has to handle (markup inside ArticleTitle, a",
+    "MedlineDate instead of a Year, >4 authors, duplicate MeSH headings, ERIC's",
+    "array-valued title, and a trial with no overall officials)."
+  ],
+  "version": 1,
+  "efetchXml": "<?xml version=\"1.0\"?><PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>30567716</PMID><Article><Journal><ISOAbbreviation>Adv Health Sci Educ</ISOAbbreviation><JournalIssue><PubDate><Year>2019</Year></PubDate></JournalIssue></Journal><ArticleTitle>Attachment and <i>burnout</i> in clinicians.</ArticleTitle><AuthorList><Author><LastName>Hazan</LastName><Initials>C</Initials></Author><Author><LastName>Shaver</LastName><Initials>P</Initials></Author><Author><LastName>Third</LastName><Initials>A</Initials></Author><Author><LastName>Fourth</LastName><Initials>B</Initials></Author><Author><LastName>Fifth</LastName><Initials>C</Initials></Author></AuthorList><Abstract><AbstractText>First part.</AbstractText><AbstractText>Second part.</AbstractText></Abstract><PublicationTypeList><PublicationType>Journal Article</PublicationType><PublicationType>Review</PublicationType></PublicationTypeList><ELocationID>x</ELocationID></Article><MeshHeadingList><MeshHeading><DescriptorName>Burnout, Professional</DescriptorName></MeshHeading><MeshHeading><DescriptorName>Burnout, Professional</DescriptorName></MeshHeading><MeshHeading><DescriptorName>Humans</DescriptorName></MeshHeading></MeshHeadingList><KeywordList><Keyword>mindfulness</Keyword><Keyword>x</Keyword><Keyword>burnout</Keyword></KeywordList></MedlineCitation><PubmedData><ArticleIdList><ArticleId IdType=\"pubmed\">30567716</ArticleId><ArticleId IdType=\"doi\">10.1007/s10459-018-9865-9</ArticleId></ArticleIdList></PubmedData></PubmedArticle><PubmedArticle><MedlineCitation><PMID>22486677</PMID><Article><Journal><ISOAbbreviation>J Old</ISOAbbreviation><JournalIssue><PubDate><MedlineDate>1998 Spring</MedlineDate></PubDate></JournalIssue></Journal><ArticleTitle>An older record.</ArticleTitle><AuthorList><Author><CollectiveName>A Study Group</CollectiveName></Author></AuthorList></Article></MedlineCitation></PubmedArticle></PubmedArticleSet>",
+  "efetchPmids": ["30567716", "22486677"],
+  "ericDoc": {
+    "id": "EJ1234567",
+    "title": ["The Science of Reading Comprehension Instruction"],
+    "author": ["Duke, Nell K.", "Cartwright, Kelly B.", "Third, A.", "Fourth, B.", "Fifth, C."],
+    "source": "Reading Teacher",
+    "publicationtype": ["Journal Articles", "Reports - Descriptive"],
+    "publicationdateyear": 2021,
+    "description": "  An abstract with surrounding whitespace.  ",
+    "subject": ["Reading Comprehension", "  Reading Instruction  ", ""],
+    "peerreviewed": "T",
+    "url": "https://eric.ed.gov/?id=EJ1234567"
+  },
+  "ctStudy": {
+    "protocolSection": {
+      "identificationModule": { "nctId": "NCT01234567", "briefTitle": "A Trial of Something" },
+      "statusModule": { "overallStatus": "ACTIVE_NOT_RECRUITING", "startDateStruct": { "date": "2019-06-15" } },
+      "descriptionModule": { "briefSummary": "  Brief summary text.  " },
+      "designModule": { "studyType": "INTERVENTIONAL", "phases": ["PHASE2", "PHASE3", "NA"] },
+      "conditionsModule": { "conditions": ["Asthma", "Asthma"], "keywords": ["inhaled corticosteroid"] },
+      "sponsorCollaboratorsModule": { "leadSponsor": { "name": "Some University" } },
+      "contactsLocationsModule": { "overallOfficials": [{ "name": "Smith J" }, { "name": "Jones K" }] }
+    },
+    "derivedSection": {
+      "conditionBrowseModule": { "meshes": [{ "term": "Asthma" }, { "term": "Lung Diseases" }] },
+      "interventionBrowseModule": { "meshes": [{ "term": "Budesonide" }] }
+    },
+    "hasResults": true
+  }
+}

@@ -26,7 +26,7 @@ interface EricDoc {
   peerreviewed?: string;
 }
 
-function parseEricDoc(doc: EricDoc): Article {
+export function parseEricDoc(doc: EricDoc): Article {
   return {
     src: "eric",
     pmid: doc.id ?? "",

@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo parity fixtures for the per-source term formatters.",
+    "Companion to query-parity.json — same contract, narrower scope: these are the",
+    "leaf functions the query builders call to render a single pool term or a single",
+    "advanced-search row into one source's native syntax.",
+    "",
+    "Run against both implementations:",
+    "  - MCP app: server/eric.ts, server/trials.ts, server/pubmed.ts (imported directly)",
+    "  - Website: the same-named page globals in index.html, via page.evaluate",
+    "",
+    "`fn` names are identical in both repos, so each runner can dispatch by name.",
+    "`args` are passed positionally."
+  ],
+  "version": 1,
+  "cases": [
+    { "fn": "ericKwTerm", "args": ["reading", "tiab"], "expected": "(title:\"reading\" OR description:\"reading\")" },
+    { "fn": "ericKwTerm", "args": ["reading", "ti"], "expected": "title:\"reading\"" },
+    { "fn": "ericKwTerm", "args": ["reading", "ab"], "expected": "description:\"reading\"" },
+    { "fn": "ericKwTerm", "args": ["reading", "all"], "expected": "\"reading\"" },
+    { "fn": "ericKwTerm", "args": ["reading comprehension", "tiab"], "expected": "(title:\"reading comprehension\" OR description:\"reading comprehension\")" },
+
+    { "fn": "ericDescTerm", "args": ["Reading Comprehension"], "expected": "subject:\"Reading Comprehension\"" },
+
+    { "fn": "ctKwTerm", "args": ["asthma", "tiab"], "expected": "\"asthma\"" },
+    { "fn": "ctKwTerm", "args": ["asthma", "ti"], "expected": "AREA[BriefTitle]\"asthma\"" },
+    { "fn": "ctKwTerm", "args": ["asthma", "ab"], "expected": "\"asthma\"" },
+    { "fn": "ctKwTerm", "args": ["asthma", "all"], "expected": "\"asthma\"" },
+
+    { "fn": "ctMeshTerm", "args": ["Neuralgia"], "expected": "(AREA[ConditionSearch]\"Neuralgia\" OR AREA[InterventionSearch]\"Neuralgia\")" },
+
+    { "fn": "ericAssembleTerm", "args": ["all", "reading"], "expected": "reading" },
+    { "fn": "ericAssembleTerm", "args": ["subject", "reading"], "expected": "subject:reading" },
+    { "fn": "ericAssembleTerm", "args": ["subject", "reading comprehension"], "expected": "subject:\"reading comprehension\"" },
+    { "fn": "ericAssembleTerm", "args": ["title", "\"already quoted\""], "expected": "title:\"already quoted\"" },
+    { "fn": "ericAssembleTerm", "args": ["publicationdateyear", "[2020 TO 2024]"], "expected": "publicationdateyear:[2020 TO 2024]" },
+    { "fn": "ericAssembleTerm", "args": ["subject", "  padded  "], "expected": "subject:padded" },
+
+    { "fn": "ctAssembleTerm", "args": ["all", "asthma"], "expected": "asthma" },
+    { "fn": "ctAssembleTerm", "args": ["ConditionSearch", "asthma"], "expected": "AREA[ConditionSearch]asthma" },
+    { "fn": "ctAssembleTerm", "args": ["ConditionSearch", "heart failure"], "expected": "AREA[ConditionSearch]\"heart failure\"" },
+    { "fn": "ctAssembleTerm", "args": ["Phase", "PHASE3"], "expected": "AREA[Phase]PHASE3" },
+    { "fn": "ctAssembleTerm", "args": ["BriefTitle", "\"already quoted\""], "expected": "AREA[BriefTitle]\"already quoted\"" }
+  ]
+}

@@ -1,0 +1,531 @@
+{
+  "pubmedFields": [
+    {
+      "label": "Affiliation",
+      "tag": "ad"
+    },
+    {
+      "label": "All Fields",
+      "tag": "all"
+    },
+    {
+      "label": "Author",
+      "tag": "au"
+    },
+    {
+      "label": "Author - Corporate",
+      "tag": "cn"
+    },
+    {
+      "label": "Author - First",
+      "tag": "1au"
+    },
+    {
+      "label": "Author - Identifier",
+      "tag": "auid"
+    },
+    {
+      "label": "Author - Last",
+      "tag": "lastau"
+    },
+    {
+      "label": "Book",
+      "tag": "book"
+    },
+    {
+      "label": "Conflict of Interest Statements",
+      "tag": "cois"
+    },
+    {
+      "label": "Date - Completion",
+      "tag": "dcom"
+    },
+    {
+      "label": "Date - Create",
+      "tag": "crdt"
+    },
+    {
+      "label": "Date - Entry",
+      "tag": "edat"
+    },
+    {
+      "label": "Date - MeSH",
+      "tag": "mhda"
+    },
+    {
+      "label": "Date - Modification",
+      "tag": "lr"
+    },
+    {
+      "label": "Date - Publication",
+      "tag": "dp"
+    },
+    {
+      "label": "EC/RN Number",
+      "tag": "rn"
+    },
+    {
+      "label": "Editor",
+      "tag": "ed"
+    },
+    {
+      "label": "Filter",
+      "tag": "filter"
+    },
+    {
+      "label": "Grants and Funding",
+      "tag": "gr"
+    },
+    {
+      "label": "ISBN",
+      "tag": "isbn"
+    },
+    {
+      "label": "Investigator",
+      "tag": "ir"
+    },
+    {
+      "label": "Issue",
+      "tag": "ip"
+    },
+    {
+      "label": "Journal",
+      "tag": "ta"
+    },
+    {
+      "label": "Language",
+      "tag": "la"
+    },
+    {
+      "label": "Location ID",
+      "tag": "lid"
+    },
+    {
+      "label": "MeSH Major Topic",
+      "tag": "majr"
+    },
+    {
+      "label": "MeSH Subheading",
+      "tag": "sh"
+    },
+    {
+      "label": "MeSH Terms",
+      "tag": "mh"
+    },
+    {
+      "label": "Other Term",
+      "tag": "ot"
+    },
+    {
+      "label": "Pagination",
+      "tag": "pg"
+    },
+    {
+      "label": "Pharmacological Action",
+      "tag": "pa"
+    },
+    {
+      "label": "Publication Type",
+      "tag": "pt"
+    },
+    {
+      "label": "Publisher",
+      "tag": "pubn"
+    },
+    {
+      "label": "Secondary Source ID",
+      "tag": "si"
+    },
+    {
+      "label": "Subject - Personal Name",
+      "tag": "ps"
+    },
+    {
+      "label": "Supplementary Concept",
+      "tag": "nm"
+    },
+    {
+      "label": "Text Word",
+      "tag": "tw"
+    },
+    {
+      "label": "Title",
+      "tag": "ti"
+    },
+    {
+      "label": "Title/Abstract",
+      "tag": "tiab"
+    },
+    {
+      "label": "Transliterated Title",
+      "tag": "tt"
+    },
+    {
+      "label": "Volume",
+      "tag": "vi"
+    }
+  ],
+  "ericAdvFields": [
+    {
+      "label": "All Fields",
+      "tag": "all"
+    },
+    {
+      "label": "Abstract",
+      "tag": "description"
+    },
+    {
+      "label": "Author",
+      "tag": "author"
+    },
+    {
+      "label": "Descriptor (subject)",
+      "tag": "subject"
+    },
+    {
+      "label": "Education Level",
+      "tag": "educationlevel"
+    },
+    {
+      "label": "ERIC ID",
+      "tag": "id"
+    },
+    {
+      "label": "ISSN",
+      "tag": "issn"
+    },
+    {
+      "label": "Language",
+      "tag": "language"
+    },
+    {
+      "label": "Peer Reviewed (T/F)",
+      "tag": "peerreviewed"
+    },
+    {
+      "label": "Publication Type",
+      "tag": "publicationtype"
+    },
+    {
+      "label": "Publisher",
+      "tag": "publisher"
+    },
+    {
+      "label": "Source (journal)",
+      "tag": "source"
+    },
+    {
+      "label": "Title",
+      "tag": "title"
+    },
+    {
+      "label": "Year",
+      "tag": "publicationdateyear"
+    }
+  ],
+  "ctAdvFields": [
+    {
+      "label": "All terms",
+      "tag": "all"
+    },
+    {
+      "label": "Condition / disease",
+      "tag": "ConditionSearch"
+    },
+    {
+      "label": "Intervention / treatment",
+      "tag": "InterventionSearch"
+    },
+    {
+      "label": "Location",
+      "tag": "LocationSearch"
+    },
+    {
+      "label": "Outcome measure",
+      "tag": "OutcomeSearch"
+    },
+    {
+      "label": "Investigator (official)",
+      "tag": "OverallOfficialName"
+    },
+    {
+      "label": "Phase (PHASE1…PHASE4)",
+      "tag": "Phase"
+    },
+    {
+      "label": "Sponsor (lead)",
+      "tag": "LeadSponsorName"
+    },
+    {
+      "label": "Status (e.g. RECRUITING)",
+      "tag": "OverallStatus"
+    },
+    {
+      "label": "Title",
+      "tag": "BriefTitle"
+    }
+  ],
+  "frameworks": {
+    "PICO": {
+      "label": "PICO",
+      "full": "Population · Intervention · Comparison · Outcome",
+      "tag": "Clinical trials",
+      "buckets": [
+        {
+          "key": "P",
+          "label": "Population"
+        },
+        {
+          "key": "I",
+          "label": "Intervention"
+        },
+        {
+          "key": "C",
+          "label": "Comparison"
+        },
+        {
+          "key": "O",
+          "label": "Outcome"
+        }
+      ]
+    },
+    "PICOS": {
+      "label": "PICOS",
+      "full": "Population · Intervention · Comparison · Outcome · Study design",
+      "tag": "Systematic reviews",
+      "buckets": [
+        {
+          "key": "P",
+          "label": "Population"
+        },
+        {
+          "key": "I",
+          "label": "Intervention"
+        },
+        {
+          "key": "C",
+          "label": "Comparison"
+        },
+        {
+          "key": "O",
+          "label": "Outcome"
+        },
+        {
+          "key": "S",
+          "label": "Study design"
+        }
+      ]
+    },
+    "PECO": {
+      "label": "PECO",
+      "full": "Population · Exposure · Comparison · Outcome",
+      "tag": "Epidemiology",
+      "buckets": [
+        {
+          "key": "P",
+          "label": "Population"
+        },
+        {
+          "key": "E",
+          "label": "Exposure"
+        },
+        {
+          "key": "C",
+          "label": "Comparison"
+        },
+        {
+          "key": "O",
+          "label": "Outcome"
+        }
+      ]
+    },
+    "SPICE": {
+      "label": "SPICE",
+      "full": "Setting · Population · Intervention · Comparison · Evaluation",
+      "tag": "Services research",
+      "buckets": [
+        {
+          "key": "S",
+          "label": "Setting"
+        },
+        {
+          "key": "P",
+          "label": "Population"
+        },
+        {
+          "key": "I",
+          "label": "Intervention"
+        },
+        {
+          "key": "C",
+          "label": "Comparison"
+        },
+        {
+          "key": "E",
+          "label": "Evaluation"
+        }
+      ]
+    },
+    "CIMO": {
+      "label": "CIMO",
+      "full": "Context · Intervention · Mechanisms · Outcome",
+      "tag": "Realist synthesis",
+      "buckets": [
+        {
+          "key": "C",
+          "label": "Context"
+        },
+        {
+          "key": "I",
+          "label": "Intervention"
+        },
+        {
+          "key": "M",
+          "label": "Mechanisms"
+        },
+        {
+          "key": "O",
+          "label": "Outcome"
+        }
+      ]
+    },
+    "SPIDER": {
+      "label": "SPIDER",
+      "full": "Sample · Phenomenon · Design · Evaluation · Research Type",
+      "tag": "Qualitative",
+      "buckets": [
+        {
+          "key": "S",
+          "label": "Sample"
+        },
+        {
+          "key": "PI",
+          "label": "Phenomenon of Interest"
+        },
+        {
+          "key": "D",
+          "label": "Design"
+        },
+        {
+          "key": "E",
+          "label": "Evaluation"
+        },
+        {
+          "key": "R",
+          "label": "Research Type"
+        }
+      ]
+    },
+    "PICo": {
+      "label": "PICo",
+      "full": "Population · phenomenon of Interest · Context",
+      "tag": "Qualitative, broad",
+      "buckets": [
+        {
+          "key": "P",
+          "label": "Population"
+        },
+        {
+          "key": "I",
+          "label": "Phenomenon of Interest"
+        },
+        {
+          "key": "C",
+          "label": "Context"
+        }
+      ]
+    },
+    "PCC": {
+      "label": "PCC",
+      "full": "Population · Concept · Context",
+      "tag": "Scoping reviews",
+      "buckets": [
+        {
+          "key": "P",
+          "label": "Population"
+        },
+        {
+          "key": "Co",
+          "label": "Concept"
+        },
+        {
+          "key": "Cx",
+          "label": "Context"
+        }
+      ]
+    },
+    "ECLIPSE": {
+      "label": "ECLIPSE",
+      "full": "Expectation · Client · Location · Impact · Professionals · Service",
+      "tag": "Policy & service",
+      "buckets": [
+        {
+          "key": "E",
+          "label": "Expectation"
+        },
+        {
+          "key": "C",
+          "label": "Client group"
+        },
+        {
+          "key": "L",
+          "label": "Location"
+        },
+        {
+          "key": "I",
+          "label": "Impact"
+        },
+        {
+          "key": "P",
+          "label": "Professionals"
+        },
+        {
+          "key": "S",
+          "label": "Service"
+        }
+      ]
+    },
+    "PIRD": {
+      "label": "PIRD",
+      "full": "Population · Index test · Reference standard · Diagnosis",
+      "tag": "Diagnostic accuracy",
+      "buckets": [
+        {
+          "key": "P",
+          "label": "Population"
+        },
+        {
+          "key": "I",
+          "label": "Index test"
+        },
+        {
+          "key": "R",
+          "label": "Reference standard"
+        },
+        {
+          "key": "D",
+          "label": "Diagnosis"
+        }
+      ]
+    },
+    "Custom": {
+      "label": "Custom",
+      "full": "Build your own concept groups",
+      "tag": "Flexible",
+      "buckets": [
+        {
+          "key": "c1",
+          "label": "Concept 1"
+        },
+        {
+          "key": "c2",
+          "label": "Concept 2"
+        },
+        {
+          "key": "c3",
+          "label": "Concept 3"
+        }
+      ]
+    }
+  }
+}

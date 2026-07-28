@@ -11,7 +11,8 @@
     "test": "tsc --noEmit && cross-env REVIEWSEED_RATE_LIMIT_MS=0 tsx --test \"tests/unit/*.test.ts\" \"tests/integration/*.test.ts\"",
     "test:unit": "cross-env REVIEWSEED_RATE_LIMIT_MS=0 tsx --test \"tests/unit/*.test.ts\"",
     "test:integration": "cross-env REVIEWSEED_RATE_LIMIT_MS=0 tsx --test \"tests/integration/*.test.ts\"",
-    "test:live": "tsx --test \"tests/live/*.test.ts\""
+    "test:live": "tsx --test \"tests/live/*.test.ts\"",
+    "snapshot": "tsx tests/scripts/gen-shared-surface.ts && tsx tests/scripts/gen-parser-expected.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "latest",

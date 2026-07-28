@@ -1,0 +1,106 @@
+{
+  "pubmed": {
+    "22486677": {
+      "src": "pubmed",
+      "pmid": "22486677",
+      "doi": "",
+      "title": "An older record.",
+      "authors": [],
+      "year": "1998",
+      "journal": "J Old",
+      "keywords": [],
+      "mesh": [],
+      "eric": [],
+      "abstract": "",
+      "pubtypes": [],
+      "url": "https://pubmed.ncbi.nlm.nih.gov/22486677/"
+    },
+    "30567716": {
+      "src": "pubmed",
+      "pmid": "30567716",
+      "doi": "10.1007/s10459-018-9865-9",
+      "title": "Attachment and burnout in clinicians.",
+      "authors": [
+        "Hazan C",
+        "Shaver P",
+        "Third A",
+        "Fourth B"
+      ],
+      "year": "2019",
+      "journal": "Adv Health Sci Educ",
+      "keywords": [
+        "mindfulness",
+        "burnout"
+      ],
+      "mesh": [
+        "Burnout, Professional",
+        "Humans"
+      ],
+      "eric": [],
+      "abstract": "First part. Second part.",
+      "pubtypes": [
+        "Journal Article",
+        "Review"
+      ],
+      "url": "https://pubmed.ncbi.nlm.nih.gov/30567716/"
+    }
+  },
+  "eric": {
+    "src": "eric",
+    "pmid": "EJ1234567",
+    "title": "The Science of Reading Comprehension Instruction",
+    "journal": "Reading Teacher",
+    "year": "2021",
+    "authors": [
+      "Duke, Nell K.",
+      "Cartwright, Kelly B.",
+      "Third, A.",
+      "Fourth, B."
+    ],
+    "mesh": [],
+    "eric": [
+      "Reading Comprehension",
+      "Reading Instruction"
+    ],
+    "keywords": [],
+    "doi": "",
+    "abstract": "An abstract with surrounding whitespace.",
+    "pubtypes": [
+      "Journal Articles",
+      "Reports - Descriptive"
+    ],
+    "url": "https://eric.ed.gov/?id=EJ1234567",
+    "peerReviewed": true
+  },
+  "trials": {
+    "src": "trials",
+    "pmid": "NCT01234567",
+    "title": "A Trial of Something",
+    "journal": "Some University",
+    "year": "2019",
+    "authors": [
+      "Smith J",
+      "Jones K"
+    ],
+    "mesh": [
+      "Asthma",
+      "Lung Diseases",
+      "Budesonide"
+    ],
+    "eric": [],
+    "keywords": [
+      "inhaled corticosteroid",
+      "Asthma"
+    ],
+    "doi": "",
+    "abstract": "Brief summary text.",
+    "pubtypes": [
+      "INTERVENTIONAL",
+      "Phase 2",
+      "Phase 3"
+    ],
+    "url": "https://clinicaltrials.gov/study/NCT01234567",
+    "ctStatus": "Active, not recruiting",
+    "hasResults": true
+  }
+}

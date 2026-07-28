@@ -44,7 +44,7 @@ async function esearch(term: string, retstart = 0, retmax = 10): Promise<{ ids: 
   }
 }
 
-async function efetchXml(pmids: string[]): Promise<Record<string, Article>> {
+export async function efetchXml(pmids: string[]): Promise<Record<string, Article>> {
   if (!pmids.length) return {};
   const r = await ncbiFetch(`${PUBMED_BASE}/efetch.fcgi?db=pubmed&id=${pmids.join(",")}&rettype=xml&retmode=xml`);
   // Unlike esearch (JSON, checked below), this was never checking r.ok before
@@ -174,6 +174,7 @@ export const PUBMED_FIELDS: AdvField[] = [
   { label: "Date - Publication", tag: "dp" },
   { label: "EC/RN Number", tag: "rn" },
   { label: "Editor", tag: "ed" },
+  { label: "Filter", tag: "filter" },
   { label: "Grants and Funding", tag: "gr" },
   { label: "ISBN", tag: "isbn" },
   { label: "Investigator", tag: "ir" },

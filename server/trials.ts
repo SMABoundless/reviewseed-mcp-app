@@ -21,7 +21,7 @@ const CT_STATUS_LABELS: Record<string, string> = {
   SUSPENDED: "Suspended", WITHDRAWN: "Withdrawn", UNKNOWN: "Unknown status", AVAILABLE: "Available",
 };
 
-function parseCtStudy(st: any): Article {
+export function parseCtStudy(st: any): Article {
   const ps = st.protocolSection ?? {};
   const idm = ps.identificationModule ?? {};
   const meshes = [
