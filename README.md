@@ -112,6 +112,14 @@ Outputs:
 - `dist/main.js` / `dist/server.js` / `dist/server/*.js` — compiled MCP server
 - `dist/server/assets/eric-thesaurus-2025.json` — the shipped ERIC Thesaurus snapshot
 
+> **Do not delete `dist/` in a clone that a host is configured against.** Unlike most
+> projects, `dist/` here is not a disposable artifact — MCP hosts spawn `dist/main.js`
+> directly by absolute path (see the Claude Desktop config below), so removing it makes the
+> server vanish mid-session with "Server disconnected / Could not attach". If you do clear
+> it, `npm run build` and restart the host. The tests never need `dist/` — they run against
+> source via `tsx`, and the integration harness stands in a placeholder `dist/mcp-app.html`
+> only when one is absent.
+
 ### Start server (after build)
 
 ```bash
