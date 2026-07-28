@@ -7,7 +7,11 @@
     "build": "tsc --noEmit && tsc -p tsconfig.server.json && mkdir -p dist/server/assets && cp server/assets/eric-thesaurus-2025.json dist/server/assets/eric-thesaurus-2025.json && cross-env INPUT=mcp-app.html vite build",
     "start": "node dist/main.js",
     "dev": "concurrently --raw \"cross-env NODE_ENV=development INPUT=mcp-app.html vite build --watch\" \"tsx watch main.ts\"",
-    "start:stdio": "node dist/main.js --stdio"
+    "start:stdio": "node dist/main.js --stdio",
+    "test": "tsc --noEmit && cross-env REVIEWSEED_RATE_LIMIT_MS=0 tsx --test \"tests/unit/*.test.ts\" \"tests/integration/*.test.ts\"",
+    "test:unit": "cross-env REVIEWSEED_RATE_LIMIT_MS=0 tsx --test \"tests/unit/*.test.ts\"",
+    "test:integration": "cross-env REVIEWSEED_RATE_LIMIT_MS=0 tsx --test \"tests/integration/*.test.ts\"",
+    "test:live": "tsx --test \"tests/live/*.test.ts\""
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "latest",

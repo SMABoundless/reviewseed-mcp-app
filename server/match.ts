@@ -3,8 +3,17 @@ import type { Article } from "./types.js";
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Whole-word/phrase match, not naive substring — otherwise a pool term like
 // "pain" would falsely match "Spain" or "painful" in a title/abstract.
+//
+// Boundaries are applied per-edge rather than with a blanket \b: \b asserts a
+// WORD boundary, which can never hold next to punctuation, so a term like
+// "(+)-morphine" (PubMed author keywords are full of chemical names like this)
+// would match nothing at all. Assert "not preceded/followed by a word char"
+// only on edges that are themselves word chars — equivalent to \b there, and
+// correctly unconstrained on punctuation edges.
 function containsWholeWord(haystack: string, term: string): boolean {
-  return new RegExp(`\\b${escapeRegExp(term)}\\b`, "i").test(haystack);
+  const left = /^\w/.test(term) ? "(?<!\\w)" : "";
+  const right = /\w$/.test(term) ? "(?!\\w)" : "";
+  return new RegExp(`${left}${escapeRegExp(term)}${right}`, "i").test(haystack);
 }
 
 // Which of the caller's own pool terms actually triggered a given result —

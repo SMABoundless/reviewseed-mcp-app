@@ -1,0 +1,228 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo parity fixtures for ReviewSeed's query assembly.",
+    "",
+    "These cases are run against BOTH implementations of the shared query-building logic:",
+    "  - MCP app: server/query.ts, imported directly (tests/unit/parity.test.ts)",
+    "  - Website: index.html's page-global buildBooleanQuery/buildFrameworkQuery,",
+    "    called via Playwright page.evaluate (~/code/pubmedseed/tests/verify-parity.mjs)",
+    "",
+    "The two implementations have DIFFERENT function signatures (the website's are",
+    "positional and predate the MCP app's object-based ones). Each runner adapts the",
+    "canonical `pool` shape below to its own call convention — what must match is the",
+    "OUTPUT STRING, not the calling code.",
+    "",
+    "This file is the single source of truth. The website reads it from the MCP app",
+    "repo (path via REVIEWSEED_MCP_APP env var); it is deliberately NOT duplicated,",
+    "because a stale copy would silently pass and defeat the entire purpose.",
+    "",
+    "When you fix or change shared query-assembly behavior, add a case here FIRST,",
+    "then make both repos pass it."
+  ],
+  "version": 1,
+  "boolean": [
+    {
+      "name": "keyword + mesh, pubmed",
+      "target": "pubmed",
+      "pool": { "keywords": ["gabapentin"], "mesh": ["Neuralgia"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "\"gabapentin\"[tiab] AND \"Neuralgia\"[MeSH Terms]"
+    },
+    {
+      "name": "multiple keywords are OR'd and grouped",
+      "target": "pubmed",
+      "pool": { "keywords": ["burnout", "mindfulness"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "(\"burnout\"[tiab] OR \"mindfulness\"[tiab])"
+    },
+    {
+      "name": "single keyword is not needlessly grouped",
+      "target": "pubmed",
+      "pool": { "keywords": ["burnout"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "\"burnout\"[tiab]"
+    },
+    {
+      "name": "per-keyword field tag is honored (pubmed bracket tag)",
+      "target": "pubmed",
+      "pool": { "keywords": ["burnout"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": { "burnout": "ti" },
+      "opts": {},
+      "expected": "\"burnout\"[ti]"
+    },
+    {
+      "name": "operators are configurable",
+      "target": "pubmed",
+      "pool": { "keywords": ["a", "b"], "mesh": ["M1", "M2"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": { "kwOp": "AND", "vocabOp": "AND", "joinOp": "OR" },
+      "expected": "(\"a\"[tiab] AND \"b\"[tiab]) OR (\"M1\"[MeSH Terms] AND \"M2\"[MeSH Terms])"
+    },
+    {
+      "name": "REGRESSION: lone pooled query emits bare, no redundant parens",
+      "target": "pubmed",
+      "pool": { "keywords": [], "mesh": [], "eric": [], "queries": ["\"asthma\"[tiab] AND \"child\"[tiab]"], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "\"asthma\"[tiab] AND \"child\"[tiab]"
+    },
+    {
+      "name": "REGRESSION: already fully-wrapped fragment is not double-wrapped",
+      "target": "pubmed",
+      "pool": { "keywords": [], "mesh": [], "eric": [], "queries": ["(\"A\" OR \"B\")", "(\"C\" OR \"D\")"], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "(\"A\" OR \"B\") AND (\"C\" OR \"D\")"
+    },
+    {
+      "name": "REGRESSION: partially-parenthesized fragment STILL gets a protective wrap",
+      "target": "pubmed",
+      "pool": { "keywords": ["kw"], "mesh": [], "eric": [], "queries": ["(A) OR (B)"], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "\"kw\"[tiab] AND ((A) OR (B))"
+    },
+    {
+      "name": "unwrapped multi-operator fragment gets a protective wrap",
+      "target": "pubmed",
+      "pool": { "keywords": ["kw"], "mesh": [], "eric": [], "queries": ["A OR B"], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "\"kw\"[tiab] AND (A OR B)"
+    },
+    {
+      "name": "eric target uses field prefixes and the eric descriptor pool",
+      "target": "eric",
+      "pool": { "keywords": ["reading"], "mesh": ["Ignored"], "eric": ["Reading Comprehension"], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "(title:\"reading\" OR description:\"reading\") AND subject:\"Reading Comprehension\""
+    },
+    {
+      "name": "eric honors ti/ab/all field tags",
+      "target": "eric",
+      "pool": { "keywords": ["x", "y", "z"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": { "x": "ti", "y": "ab", "z": "all" },
+      "opts": {},
+      "expected": "(title:\"x\" OR description:\"y\" OR \"z\")"
+    },
+    {
+      "name": "trials target uses AREA operators and the SHARED mesh pool",
+      "target": "trials",
+      "pool": { "keywords": ["gabapentin"], "mesh": ["Neuralgia"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "\"gabapentin\" AND (AREA[ConditionSearch]\"Neuralgia\" OR AREA[InterventionSearch]\"Neuralgia\")"
+    },
+    {
+      "name": "trials keyword with ti tag narrows to BriefTitle",
+      "target": "trials",
+      "pool": { "keywords": ["asthma"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": { "asthma": "ti" },
+      "opts": {},
+      "expected": "AREA[BriefTitle]\"asthma\""
+    },
+    {
+      "name": "per-source query pools do not leak across targets",
+      "target": "pubmed",
+      "pool": { "keywords": ["kw"], "mesh": [], "eric": [], "queries": [], "ericQueries": ["subject:\"X\""], "ctQueries": ["AREA[Phase]PHASE3"] },
+      "kwFields": {},
+      "opts": {},
+      "expected": "\"kw\"[tiab]"
+    },
+    {
+      "name": "empty pool yields an empty string",
+      "target": "pubmed",
+      "pool": { "keywords": [], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "expected": ""
+    }
+  ],
+  "framework": [
+    {
+      "name": "PICO: two buckets joined with AND",
+      "target": "pubmed",
+      "frameworkKey": "PICO",
+      "buckets": { "P": ["Neuralgia"], "I": ["gabapentin"] },
+      "pool": { "keywords": ["gabapentin"], "mesh": ["Neuralgia"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "\"Neuralgia\"[MeSH Terms]\nAND \"gabapentin\"[tiab]"
+    },
+    {
+      "name": "bucket with two terms of the same kind is OR'd and grouped",
+      "target": "pubmed",
+      "frameworkKey": "PICO",
+      "buckets": { "P": ["a", "b"] },
+      "pool": { "keywords": ["a", "b"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "(\"a\"[tiab] OR \"b\"[tiab])"
+    },
+    {
+      "name": "bucket mixing a keyword and a vocab term groups both parts",
+      "target": "pubmed",
+      "frameworkKey": "PICO",
+      "buckets": { "P": ["kw", "M1"] },
+      "pool": { "keywords": ["kw"], "mesh": ["M1"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "(\"kw\"[tiab] OR \"M1\"[MeSH Terms])"
+    },
+    {
+      "name": "REGRESSION: lone pooled query in a bucket emits bare",
+      "target": "pubmed",
+      "frameworkKey": "PICO",
+      "buckets": { "P": ["Q1"] },
+      "pool": { "keywords": [], "mesh": [], "eric": [], "queries": ["Q1"], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "Q1"
+    },
+    {
+      "name": "REGRESSION: already-wrapped query in a bucket is not double-wrapped",
+      "target": "pubmed",
+      "frameworkKey": "PICO",
+      "buckets": { "P": ["(\"A\" OR \"B\")"] },
+      "pool": { "keywords": [], "mesh": [], "eric": [], "queries": ["(\"A\" OR \"B\")"], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "(\"A\" OR \"B\")"
+    },
+    {
+      "name": "empty buckets are skipped entirely",
+      "target": "pubmed",
+      "frameworkKey": "PICO",
+      "buckets": { "P": ["kw"], "I": [], "C": [], "O": [] },
+      "pool": { "keywords": ["kw"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "\"kw\"[tiab]"
+    },
+    {
+      "name": "terms not present in any pool are ignored",
+      "target": "pubmed",
+      "frameworkKey": "PICO",
+      "buckets": { "P": ["kw", "ghost-term-not-in-pool"] },
+      "pool": { "keywords": ["kw"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "\"kw\"[tiab]"
+    },
+    {
+      "name": "SPIDER (5 buckets) across three concept groups, eric target",
+      "target": "eric",
+      "frameworkKey": "SPIDER",
+      "buckets": { "S": ["Adolescents"], "PI": ["reading"], "D": ["Qualitative Research"] },
+      "pool": { "keywords": ["reading"], "mesh": [], "eric": ["Adolescents", "Qualitative Research"], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "subject:\"Adolescents\"\nAND (title:\"reading\" OR description:\"reading\")\nAND subject:\"Qualitative Research\""
+    },
+    {
+      "name": "trials target emits AREA syntax inside framework buckets",
+      "target": "trials",
+      "frameworkKey": "PICO",
+      "buckets": { "P": ["Neuralgia"], "I": ["gabapentin"] },
+      "pool": { "keywords": ["gabapentin"], "mesh": ["Neuralgia"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "(AREA[ConditionSearch]\"Neuralgia\" OR AREA[InterventionSearch]\"Neuralgia\")\nAND \"gabapentin\""
+    }
+  ]
+}
