@@ -10,6 +10,7 @@ import { App } from "@modelcontextprotocol/ext-apps";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS, type Pool } from "../server/query.js";
+import type { SearchLogEntry, TermOrigin, TermSources } from "../server/protocol.js";
 import type { Article, Source, VocabRow } from "../server/types.js";
 
 const mcpApp = new App({ name: "ReviewSeed", version: "2.0.0" });
@@ -627,6 +628,11 @@ function ReviewSeed() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selected, setSelected] = useState(new Set<string>());
   const [pool, setPool] = useState<Pool>({ keywords: [], mesh: [], eric: [], queries: [], ericQueries: [], ctQueries: [] });
+  // Reporting foundations, no UI of their own yet: where each pooled term came
+  // from, and every search actually executed (date + count per database, which
+  // PRISMA-S requires and nothing can reconstruct after the fact).
+  const [termSources, setTermSources] = useState<TermSources>({});
+  const [searchLog, setSearchLog] = useState<SearchLogEntry[]>([]);
   const [kwFields, setKwFields] = useState<Record<string, string>>({});
   const [guideOpen, setGuideOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -695,12 +701,39 @@ function ReviewSeed() {
   const setField = (term: string, field: string) => setKwFields(p => ({ ...p, [term]: field }));
   const poolKey = (t: "keyword" | "vocab" | "query"): keyof Pool =>
     t === "keyword" ? "keywords" : t === "vocab" ? (source === "eric" ? "eric" : "mesh") : (source === "eric" ? "ericQueries" : source === "trials" ? "ctQueries" : "queries");
-  const addToPool = (t: "keyword" | "vocab" | "query", term: string) => setPool(p => { const key = poolKey(t); return p[key].includes(term) ? p : { ...p, [key]: [...p[key], term] }; });
+  // Term provenance — a SIDECAR to the pool, deliberately not part of it, so
+  // the query builders keep taking plain string arrays and the cross-repo
+  // query-parity fixtures stay untouched. `from` is how the term ENTERED the
+  // pool (first origin wins); `ids` are the records carrying it and accumulate
+  // as more seeds corroborate the term. Read by buildSearchProtocol — see
+  // docs/REPORTS-ROADMAP.md §2.1 in the website repo.
+  const recordProv = (key: keyof Pool, term: string, prov?: { from?: TermOrigin; ids?: string[] }) => {
+    if (!prov) return;
+    setTermSources(p => {
+      const cur = p[key]?.[term];
+      const ids = [...(cur?.ids ?? [])];
+      for (const id of prov.ids ?? []) if (id && !ids.includes(id)) ids.push(id);
+      return { ...p, [key]: { ...(p[key] ?? {}), [term]: { ids, from: cur?.from ?? prov.from ?? "manual" } } };
+    });
+  };
+  const addToPool = (t: "keyword" | "vocab" | "query", term: string, prov?: { from?: TermOrigin; ids?: string[] }) => {
+    const key = poolKey(t);
+    setPool(p => p[key].includes(term) ? p : { ...p, [key]: [...p[key], term] });
+    // Recorded even when already pooled — a second record carrying the same
+    // term is still evidence worth keeping.
+    recordProv(key, term, prov);
+  };
   // Vocab-explicit variants for the synonyms panel — a MeSH/ERIC broader/
   // narrower term always belongs to that vocab's pool regardless of which
   // source is currently toggled (the Harvest tab shows all pools at once).
-  const addKeyword = (term: string) => setPool(p => p.keywords.includes(term) ? p : { ...p, keywords: [...p.keywords, term] });
-  const addVocabTerm = (vocab: "mesh" | "eric", term: string) => setPool(p => p[vocab].includes(term) ? p : { ...p, [vocab]: [...p[vocab], term] });
+  const addKeyword = (term: string) => {
+    setPool(p => p.keywords.includes(term) ? p : { ...p, keywords: [...p.keywords, term] });
+    recordProv("keywords", term, { from: "synonym" });
+  };
+  const addVocabTerm = (vocab: "mesh" | "eric", term: string) => {
+    setPool(p => p[vocab].includes(term) ? p : { ...p, [vocab]: [...p[vocab], term] });
+    recordProv(vocab, term, { from: "synonym" });
+  };
 
   // "≈" synonyms panel on pool chips — entry terms + broader/narrower for a
   // harvested MeSH/ERIC term, sourced from the same tool the Vocabulary
@@ -717,9 +750,15 @@ function ReviewSeed() {
     }
   };
 
-  const applyResult = (r: { articles: Article[]; total?: number; error?: string }) => {
+  // `log` records the search in the protocol's audit trail. Passed only where
+  // the UI knows the exact string that was executed — reviewseed_search and the
+  // advanced builder. Author search and citation lookup assemble their query
+  // inside the server tool, so logging what the UI sent would misreport what
+  // actually ran; they're omitted deliberately rather than approximated.
+  const applyResult = (r: { articles: Article[]; total?: number; error?: string }, log?: { source: Source; query: string }) => {
     if (r.error) { setError(r.error); setArticles([]); return; }
     setArticles(r.articles); setTotal(r.total ?? r.articles.length);
+    if (log) setSearchLog(l => [...l, { at: new Date().toISOString(), source: log.source, query: log.query, total: r.total ?? r.articles.length }]);
     if (!r.articles.length) setError("No results found.");
   };
 
@@ -728,7 +767,7 @@ function ReviewSeed() {
   // can run a search without racing React's batched state updates.
   const runSearchWith = async (src: Source, q: string, targetPage = 1) => {
     setLoading(true); setError(""); setSelected(new Set());
-    try { applyResult(await callTool("reviewseed_search", { source: src, query: q, page: targetPage, pageSize: 10 })); setPage(targetPage); }
+    try { applyResult(await callTool("reviewseed_search", { source: src, query: q, page: targetPage, pageSize: 10 }), targetPage === 1 ? { source: src, query: q } : undefined); setPage(targetPage); }
     catch { setError("Search failed. Check your connection and try again."); }
     setLoading(false);
   };
@@ -760,6 +799,23 @@ function ReviewSeed() {
       mesh: [...new Set([...p.mesh, ...sel.flatMap(a => a.mesh)])],
       eric: [...new Set([...p.eric, ...sel.flatMap(a => a.eric)])],
     }));
+    // One pass for the whole harvest: every term gets the ids of every selected
+    // record that carried it, which is what term-yield reporting is computed from.
+    setTermSources(p => {
+      const next: TermSources = { ...p, keywords: { ...(p.keywords ?? {}) }, mesh: { ...(p.mesh ?? {}) }, eric: { ...(p.eric ?? {}) } };
+      const add = (key: "keywords" | "mesh" | "eric", term: string, id: string) => {
+        const cur = next[key]![term];
+        const ids = [...(cur?.ids ?? [])];
+        if (!ids.includes(id)) ids.push(id);
+        next[key]![term] = { ids, from: cur?.from ?? "seed" };
+      };
+      for (const a of sel) {
+        a.keywords.forEach(t => add("keywords", t, a.pmid));
+        a.mesh.forEach(t => add("mesh", t, a.pmid));
+        a.eric.forEach(t => add("eric", t, a.pmid));
+      }
+      return next;
+    });
     setTab("harvest");
   };
 
@@ -848,8 +904,8 @@ function ReviewSeed() {
           )}
           {mode === "advanced" && (
             <AdvancedSearch c={c} source={source} loading={loading}
-              onRun={async q => { setQuery(q); setLoading(true); setSelected(new Set()); try { applyResult(await callTool("reviewseed_search", { source, query: q, page: 1, pageSize: 10 })); setPage(1); } catch { setError("Search failed."); } setLoading(false); }}
-              onAddToPool={q => addToPool("query", q)} />
+              onRun={async q => { setQuery(q); setLoading(true); setSelected(new Set()); try { applyResult(await callTool("reviewseed_search", { source, query: q, page: 1, pageSize: 10 }), { source, query: q }); setPage(1); } catch { setError("Search failed."); } setLoading(false); }}
+              onAddToPool={q => addToPool("query", q, { from: "advanced" })} />
           )}
           {mode === "paste" && (
             <div>
@@ -862,7 +918,7 @@ function ReviewSeed() {
               </button>
             </div>
           )}
-          {mode === "vocab" && <VocabExplorer c={c} source={source} pool={pool} onAddKeyword={t => addToPool("keyword", t)} onAddVocab={t => addToPool("vocab", t)} />}
+          {mode === "vocab" && <VocabExplorer c={c} source={source} pool={pool} onAddKeyword={t => addToPool("keyword", t, { from: "vocab" })} onAddVocab={t => addToPool("vocab", t, { from: "vocab" })} />}
 
           {error && <div role="alert" style={{ marginTop: 10, padding: "8px 12px", background: c.errorBg, borderRadius: 3, color: c.error, fontSize: 12, fontWeight: 500 }}>{error}</div>}
         </div>
@@ -907,9 +963,9 @@ function ReviewSeed() {
                   </div>
                   {(a.keywords.length > 0 || a.mesh.length > 0 || a.eric.length > 0) && (
                     <div onClick={e => e.stopPropagation()} style={{ display: "flex", flexWrap: "wrap" }}>
-                      {a.keywords.map(t => <Chip key={t} c={c} term={t} type="keyword" selected={pool.keywords.includes(t)} onClick={() => addToPool("keyword", t)} />)}
-                      {a.mesh.map(t => <Chip key={t} c={c} term={t} type="mesh" selected={pool.mesh.includes(t)} onClick={() => addToPool("vocab", t)} />)}
-                      {a.eric.map(t => <Chip key={t} c={c} term={t} type="eric" selected={pool.eric.includes(t)} onClick={() => addToPool("vocab", t)} />)}
+                      {a.keywords.map(t => <Chip key={t} c={c} term={t} type="keyword" selected={pool.keywords.includes(t)} onClick={() => addToPool("keyword", t, { from: "seed", ids: [a.pmid] })} />)}
+                      {a.mesh.map(t => <Chip key={t} c={c} term={t} type="mesh" selected={pool.mesh.includes(t)} onClick={() => addToPool("vocab", t, { from: "seed", ids: [a.pmid] })} />)}
+                      {a.eric.map(t => <Chip key={t} c={c} term={t} type="eric" selected={pool.eric.includes(t)} onClick={() => addToPool("vocab", t, { from: "seed", ids: [a.pmid] })} />)}
                     </div>
                   )}
                 </div>

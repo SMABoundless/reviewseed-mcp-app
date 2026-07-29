@@ -6,7 +6,7 @@ npm run test:live     # hits the real APIs — run before releases / when upstre
 npm run snapshot      # regenerate the generated fixtures after changing shared config/parsers
 ```
 
-`npm test` typechecks, then runs the unit + integration suites (113 tests, ~1.7s, no network).
+`npm test` typechecks, then runs the unit + integration suites (120 tests, ~1.7s, no network).
 
 ## Layout
 
@@ -17,6 +17,7 @@ npm run snapshot      # regenerate the generated fixtures after changing shared 
 | `unit/formatter-parity.test.ts` | **Cross-repo** — per-source term formatters | none |
 | `unit/shared-surface.test.ts` | **Cross-repo** — field lists + framework config snapshot | none |
 | `unit/parser-parity.test.ts` | **Cross-repo** — upstream-response parsers | none |
+| `unit/protocol.test.ts` | **Cross-repo** — the Search Protocol object (reporting foundation) | none |
 | `unit/match.test.ts` | `matchedVia` word-boundary matching, regex escaping, immutability | none |
 | `unit/eric-thesaurus.test.ts` | Shipped ERIC Thesaurus snapshot: synonym search, ranking, hierarchy | none (local asset) |
 | `integration/tools.test.ts` | Real MCP client ↔ server over `InMemoryTransport`, all HTTP stubbed | stubbed |
@@ -34,7 +35,7 @@ loudly** (never silently passes) if this repo isn't checked out — they're deli
 duplicated, since a stale copy would pass green while out of sync. Point elsewhere with
 `REVIEWSEED_MCP_APP=/path/to/reviewseed-mcp-app`.
 
-Three different shapes, because different kinds of shared surface need different tests:
+Different kinds of shared surface need different fixture shapes:
 
 | Fixture | Shape | Why |
 |---|---|---|
@@ -42,8 +43,9 @@ Three different shapes, because different kinds of shared surface need different
 | `formatter-parity.json` | input → expected string | Same, for the leaf term formatters (`ericKwTerm`, `ctMeshTerm`, `*AssembleTerm`…). |
 | `shared-surface.json` | **generated** snapshot | **Data** (field lists, framework config). Compared directly — no hand-maintained third copy, so adding a field to one repo and not the other fails immediately. |
 | `parser-inputs.json` + `parser-expected.json` | canned upstream bytes → expected `Article` | **Parsers.** Feeding byte-identical payloads to both is the only way to separate real divergence from an upstream difference. |
+| `protocol-parity.json` | input → expected object | **Behavior.** `buildSearchProtocol` is the seam every report reads, so the fixtures pin its decisions (absent-vs-empty selection maps, per-source `latestTotal`, seed-record dedup order) rather than letting either implementation define them. Compared as canonically-serialized JSON: key order may differ, array order may not. |
 
-The last two are **generated** by `npm run snapshot`. Their guard tests fail with "stale"
+`shared-surface.json` and `parser-expected.json` are **generated** by `npm run snapshot`. Their guard tests fail with "stale"
 if the code changes without regenerating — that failure, plus the website's matching
 failure, is the drift signal.
 
@@ -95,3 +97,9 @@ No UI tests. `src/mcp-app.tsx` needs a host bridge to function — `callServerTo
 means building a fake host harness. Deferred deliberately: high cost, and it's the layer
 *least* shared with the website. The logic the UI depends on (`server/query.ts`) is fully
 covered above.
+
+One consequence worth naming: the UI's **term-provenance and search-log capture** (the
+`recordProv` / `setSearchLog` call sites in `src/mcp-app.tsx`) is therefore unverified here.
+`buildSearchProtocol` itself is parity-checked, and the website's equivalent capture sites
+are covered end-to-end by its `verify-protocol.mjs` — but if an add site in this app's UI
+stops recording provenance, nothing goes red.

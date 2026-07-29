@@ -1,0 +1,313 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo parity fixtures for ReviewSeed's Search Protocol object.",
+    "",
+    "buildSearchProtocol() folds pool + selections + kwFields + framework + filters +",
+    "term provenance + search log into one normalized, serializable record. It is the",
+    "seam every report and exporter reads, so both repos must produce byte-equal output:",
+    "  - MCP app: server/protocol.ts, imported directly (tests/unit/protocol.test.ts)",
+    "  - Website: index.html's page-global buildSearchProtocol, called via Playwright",
+    "    page.evaluate (~/code/pubmedseed/tests/verify-parity.mjs)",
+    "",
+    "BEHAVIOR fixture, hand-written on purpose: these cases encode decisions that a",
+    "generated snapshot would silently ratify instead of pinning. The load-bearing ones:",
+    "  - an ABSENT `selected` map means 'everything in the pool is selected' (headless",
+    "    callers have no selection UI); an EMPTY array means genuinely none selected",
+    "  - keywords report their field tag, defaulting to tiab; other kinds report null",
+    "  - `latestTotal` is the most recent log entry FOR THIS SOURCE, not the last entry",
+    "  - `seedRecords` is deduped in first-seen order walking pools in emission order",
+    "  - vocabularies are listed only when that vocabulary's pool is non-empty; ERIC",
+    "    carries its pinned snapshot edition, MeSH has none to cite (fetched live)",
+    "",
+    "The clock is an INPUT (`generatedAt`), never read inside the function — a builder",
+    "that reads the wall clock can't be compared across two repos at all.",
+    "",
+    "Comparison is on canonically-serialized JSON (keys sorted recursively), so key",
+    "ORDER may differ between the two implementations but array order may not.",
+    "",
+    "This file is the single source of truth; the website reads it from this repo",
+    "(path via REVIEWSEED_MCP_APP) and is deliberately NOT given a copy. Change shared",
+    "protocol behavior here FIRST, then make both repos pass."
+  ],
+  "version": 1,
+  "cases": [
+    {
+      "name": "minimal boolean, pubmed — no provenance, no log, no selection map",
+      "input": {
+        "generatedAt": "2026-07-29T14:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "mcp-app" },
+        "source": "pubmed",
+        "pool": { "keywords": ["gabapentin"], "mesh": ["Neuralgia"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+        "kwFields": {},
+        "mode": "boolean",
+        "query": "\"gabapentin\"[tiab] AND \"Neuralgia\"[MeSH Terms]"
+      },
+      "expected": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-29T14:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "mcp-app" },
+        "source": {
+          "key": "pubmed",
+          "label": "PubMed",
+          "platform": "NCBI E-utilities (unauthenticated)",
+          "api": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+        },
+        "query": {
+          "mode": "boolean",
+          "string": "\"gabapentin\"[tiab] AND \"Neuralgia\"[MeSH Terms]",
+          "booleanOpts": { "kwOp": "OR", "vocabOp": "OR", "joinOp": "AND" },
+          "framework": null
+        },
+        "vocabularies": [
+          { "key": "mesh", "label": "NLM Medical Subject Headings (MeSH)", "edition": null }
+        ],
+        "terms": [
+          { "label": "gabapentin", "kind": "keyword", "pool": "keywords", "field": "tiab", "selected": true, "from": null, "seeds": [] },
+          { "label": "Neuralgia", "kind": "mesh", "pool": "mesh", "field": null, "selected": true, "from": null, "seeds": [] }
+        ],
+        "filters": { "summary": [] },
+        "searchLog": [],
+        "seedRecords": [],
+        "counts": {
+          "keywords": 1, "mesh": 1, "eric": 0, "queries": 0,
+          "terms": 2, "selected": 2, "seedRecords": 0, "searchesRun": 0, "latestTotal": null
+        }
+      }
+    },
+    {
+      "name": "framework, pubmed — provenance, partial selection, cross-source log",
+      "input": {
+        "generatedAt": "2026-07-29T15:30:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "website" },
+        "source": "pubmed",
+        "pool": {
+          "keywords": ["telehealth", "rural"],
+          "mesh": ["Telemedicine"],
+          "eric": [],
+          "queries": ["(\"Rural Health\"[MeSH Terms])"],
+          "ericQueries": [],
+          "ctQueries": []
+        },
+        "kwFields": { "telehealth": "ti" },
+        "mode": "framework",
+        "framework": { "key": "PICO", "buckets": { "P": ["rural"], "I": ["telehealth", "Telemedicine"] } },
+        "query": "(\"rural\"[tiab]) AND (\"telehealth\"[ti] OR \"Telemedicine\"[MeSH Terms])",
+        "selected": { "keywords": ["telehealth"], "mesh": ["Telemedicine"], "queries": [] },
+        "termSources": {
+          "keywords": {
+            "telehealth": { "ids": ["31234567", "29876543"], "from": "seed" },
+            "rural": { "ids": [], "from": "manual" }
+          },
+          "mesh": { "Telemedicine": { "ids": ["31234567"], "from": "vocab" } }
+        },
+        "filters": { "summary": ["Publication date: 2015–2026", "Language: English"] },
+        "searchLog": [
+          { "at": "2026-07-29T15:00:00.000Z", "source": "pubmed", "query": "telehealth", "total": 41234 },
+          { "at": "2026-07-29T15:20:00.000Z", "source": "eric", "query": "telehealth", "total": 812 }
+        ]
+      },
+      "expected": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-29T15:30:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "website" },
+        "source": {
+          "key": "pubmed",
+          "label": "PubMed",
+          "platform": "NCBI E-utilities (unauthenticated)",
+          "api": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+        },
+        "query": {
+          "mode": "framework",
+          "string": "(\"rural\"[tiab]) AND (\"telehealth\"[ti] OR \"Telemedicine\"[MeSH Terms])",
+          "booleanOpts": null,
+          "framework": { "key": "PICO", "buckets": { "P": ["rural"], "I": ["telehealth", "Telemedicine"] } }
+        },
+        "vocabularies": [
+          { "key": "mesh", "label": "NLM Medical Subject Headings (MeSH)", "edition": null }
+        ],
+        "terms": [
+          { "label": "telehealth", "kind": "keyword", "pool": "keywords", "field": "ti", "selected": true, "from": "seed", "seeds": ["31234567", "29876543"] },
+          { "label": "rural", "kind": "keyword", "pool": "keywords", "field": "tiab", "selected": false, "from": "manual", "seeds": [] },
+          { "label": "Telemedicine", "kind": "mesh", "pool": "mesh", "field": null, "selected": true, "from": "vocab", "seeds": ["31234567"] },
+          { "label": "(\"Rural Health\"[MeSH Terms])", "kind": "query", "pool": "queries", "field": null, "selected": false, "from": null, "seeds": [] }
+        ],
+        "filters": { "summary": ["Publication date: 2015–2026", "Language: English"] },
+        "searchLog": [
+          { "at": "2026-07-29T15:00:00.000Z", "source": "pubmed", "query": "telehealth", "total": 41234 },
+          { "at": "2026-07-29T15:20:00.000Z", "source": "eric", "query": "telehealth", "total": 812 }
+        ],
+        "seedRecords": ["31234567", "29876543"],
+        "counts": {
+          "keywords": 2, "mesh": 1, "eric": 0, "queries": 1,
+          "terms": 4, "selected": 2, "seedRecords": 2, "searchesRun": 2, "latestTotal": 41234
+        }
+      }
+    },
+    {
+      "name": "eric — thesaurus edition reported, non-default boolean operators, no selection map",
+      "input": {
+        "generatedAt": "2026-07-29T16:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "website" },
+        "source": "eric",
+        "pool": {
+          "keywords": [],
+          "mesh": [],
+          "eric": ["Distance Education", "Rural Schools"],
+          "queries": [],
+          "ericQueries": ["subject:\"Rural Schools\""],
+          "ctQueries": []
+        },
+        "kwFields": {},
+        "mode": "boolean",
+        "booleanOpts": { "kwOp": "AND", "vocabOp": "AND", "joinOp": "OR" },
+        "query": "(\"Distance Education\" AND \"Rural Schools\")",
+        "termSources": {
+          "eric": { "Distance Education": { "ids": ["EJ1234567"], "from": "seed" } }
+        },
+        "filters": { "summary": ["Peer reviewed only"] },
+        "searchLog": [
+          { "at": "2026-07-29T15:55:00.000Z", "source": "eric", "query": "distance education rural", "total": 57 }
+        ]
+      },
+      "expected": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-29T16:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "website" },
+        "source": {
+          "key": "eric",
+          "label": "ERIC",
+          "platform": "ERIC public API (api.ies.ed.gov)",
+          "api": "https://api.ies.ed.gov/eric/"
+        },
+        "query": {
+          "mode": "boolean",
+          "string": "(\"Distance Education\" AND \"Rural Schools\")",
+          "booleanOpts": { "kwOp": "AND", "vocabOp": "AND", "joinOp": "OR" },
+          "framework": null
+        },
+        "vocabularies": [
+          { "key": "eric", "label": "ERIC Thesaurus", "edition": "2025" }
+        ],
+        "terms": [
+          { "label": "Distance Education", "kind": "eric", "pool": "eric", "field": null, "selected": true, "from": "seed", "seeds": ["EJ1234567"] },
+          { "label": "Rural Schools", "kind": "eric", "pool": "eric", "field": null, "selected": true, "from": null, "seeds": [] },
+          { "label": "subject:\"Rural Schools\"", "kind": "query", "pool": "ericQueries", "field": null, "selected": true, "from": null, "seeds": [] }
+        ],
+        "filters": { "summary": ["Peer reviewed only"] },
+        "searchLog": [
+          { "at": "2026-07-29T15:55:00.000Z", "source": "eric", "query": "distance education rural", "total": 57 }
+        ],
+        "seedRecords": ["EJ1234567"],
+        "counts": {
+          "keywords": 0, "mesh": 0, "eric": 2, "queries": 1,
+          "terms": 3, "selected": 3, "seedRecords": 1, "searchesRun": 1, "latestTotal": 57
+        }
+      }
+    },
+    {
+      "name": "trials — empty pool, never searched",
+      "input": {
+        "generatedAt": "2026-07-29T17:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "mcp-app" },
+        "source": "trials",
+        "pool": { "keywords": [], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+        "kwFields": {},
+        "mode": "boolean",
+        "query": "",
+        "selected": {}
+      },
+      "expected": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-29T17:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "mcp-app" },
+        "source": {
+          "key": "trials",
+          "label": "ClinicalTrials.gov",
+          "platform": "ClinicalTrials.gov API v2",
+          "api": "https://clinicaltrials.gov/api/v2/"
+        },
+        "query": {
+          "mode": "boolean",
+          "string": "",
+          "booleanOpts": { "kwOp": "OR", "vocabOp": "OR", "joinOp": "AND" },
+          "framework": null
+        },
+        "vocabularies": [],
+        "terms": [],
+        "filters": { "summary": [] },
+        "searchLog": [],
+        "seedRecords": [],
+        "counts": {
+          "keywords": 0, "mesh": 0, "eric": 0, "queries": 0,
+          "terms": 0, "selected": 0, "seedRecords": 0, "searchesRun": 0, "latestTotal": null
+        }
+      }
+    },
+    {
+      "name": "mesh + eric pooled together — both vocabularies reported, trials source",
+      "input": {
+        "generatedAt": "2026-07-29T18:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "mcp-app" },
+        "source": "trials",
+        "pool": {
+          "keywords": ["mindfulness"],
+          "mesh": ["Mindfulness"],
+          "eric": ["Meditation"],
+          "queries": [],
+          "ericQueries": [],
+          "ctQueries": ["AREA[ConditionSearch]\"Anxiety\""]
+        },
+        "kwFields": { "mindfulness": "all" },
+        "mode": "boolean",
+        "query": "AREA[BasicSearch]\"mindfulness\"",
+        "selected": { "keywords": ["mindfulness"], "mesh": [], "eric": ["Meditation"], "ctQueries": ["AREA[ConditionSearch]\"Anxiety\""] },
+        "termSources": {
+          "keywords": { "mindfulness": { "ids": ["NCT01234567"], "from": "seed" } },
+          "eric": { "Meditation": { "ids": [], "from": "synonym" } },
+          "ctQueries": { "AREA[ConditionSearch]\"Anxiety\"": { "ids": [], "from": "advanced" } }
+        },
+        "searchLog": [
+          { "at": "2026-07-29T17:30:00.000Z", "source": "trials", "query": "mindfulness", "total": 1204 },
+          { "at": "2026-07-29T17:45:00.000Z", "source": "trials", "query": "mindfulness anxiety", "total": 311 }
+        ]
+      },
+      "expected": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-29T18:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "mcp-app" },
+        "source": {
+          "key": "trials",
+          "label": "ClinicalTrials.gov",
+          "platform": "ClinicalTrials.gov API v2",
+          "api": "https://clinicaltrials.gov/api/v2/"
+        },
+        "query": {
+          "mode": "boolean",
+          "string": "AREA[BasicSearch]\"mindfulness\"",
+          "booleanOpts": { "kwOp": "OR", "vocabOp": "OR", "joinOp": "AND" },
+          "framework": null
+        },
+        "vocabularies": [
+          { "key": "mesh", "label": "NLM Medical Subject Headings (MeSH)", "edition": null },
+          { "key": "eric", "label": "ERIC Thesaurus", "edition": "2025" }
+        ],
+        "terms": [
+          { "label": "mindfulness", "kind": "keyword", "pool": "keywords", "field": "all", "selected": true, "from": "seed", "seeds": ["NCT01234567"] },
+          { "label": "Mindfulness", "kind": "mesh", "pool": "mesh", "field": null, "selected": false, "from": null, "seeds": [] },
+          { "label": "Meditation", "kind": "eric", "pool": "eric", "field": null, "selected": true, "from": "synonym", "seeds": [] },
+          { "label": "AREA[ConditionSearch]\"Anxiety\"", "kind": "query", "pool": "ctQueries", "field": null, "selected": true, "from": "advanced", "seeds": [] }
+        ],
+        "filters": { "summary": [] },
+        "searchLog": [
+          { "at": "2026-07-29T17:30:00.000Z", "source": "trials", "query": "mindfulness", "total": 1204 },
+          { "at": "2026-07-29T17:45:00.000Z", "source": "trials", "query": "mindfulness anxiety", "total": 311 }
+        ],
+        "seedRecords": ["NCT01234567"],
+        "counts": {
+          "keywords": 1, "mesh": 1, "eric": 1, "queries": 1,
+          "terms": 4, "selected": 3, "seedRecords": 1, "searchesRun": 2, "latestTotal": 311
+        }
+      }
+    }
+  ]
+}
