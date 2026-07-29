@@ -4,13 +4,15 @@ import { PUBMED_FIELDS } from "../../server/pubmed.js";
 import { ERIC_ADV_FIELDS } from "../../server/eric.js";
 import { CT_ADV_FIELDS } from "../../server/trials.js";
 import { FRAMEWORKS } from "../../server/query.js";
+import { SLOW_LOOKUP_MS, SLOW_LOOKUP_NOTICE } from "../../server/mesh.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const SHARED_SURFACE_PATH = path.join(HERE, "..", "fixtures", "shared-surface.json");
 
 /**
  * The shared CONFIGURATION both ReviewSeed codebases must agree on: the three
- * advanced-search field lists and the framework definitions. Order matters —
+ * advanced-search field lists, the framework definitions, and the slow-lookup
+ * threshold/copy (one wording for "NLM is slow", not two). Order matters —
  * both apps render these lists directly, so a reordering is a real UI diff.
  *
  * `blurb` is intentionally excluded: it's prose shown only in the MCP app's
@@ -27,5 +29,6 @@ export function buildSharedSurface() {
       tag: f.tag,
       buckets: f.buckets.map(b => ({ key: b.key, label: b.label })),
     }])),
+    slowLookup: { ms: SLOW_LOOKUP_MS, notice: SLOW_LOOKUP_NOTICE },
   };
 }

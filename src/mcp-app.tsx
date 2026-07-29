@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS, type Pool } from "../server/query.js";
 import type { SearchLogEntry, TermOrigin, TermSources } from "../server/protocol.js";
 import type { Article, Source, VocabRow } from "../server/types.js";
+import { isSlowLookup, SLOW_LOOKUP_MS, SLOW_LOOKUP_NOTICE } from "../server/mesh.js";
 
 const mcpApp = new App({ name: "ReviewSeed", version: "2.0.0" });
 
@@ -66,6 +67,23 @@ const KW_FIELDS = [
   { label: "All Fields",     tag: "all"  },
 ];
 const SOURCE_LABEL: Record<Source, string> = { pubmed: "PubMed", eric: "ERIC", trials: "ClinicalTrials.gov" };
+
+// Flips to true once an in-flight NLM lookup passes SLOW_LOOKUP_MS, back to
+// false when it settles, so the copy can name the slow service instead of
+// spinning mutely. Same threshold and wording as the website (both pinned in
+// tests/fixtures/shared-surface.json) — see the 2026-07-29 incident note in
+// server/mesh.ts. The tools also return `notice` on a slow result so the model
+// can explain the wait; this covers the wait itself.
+function useSlowNotice(active: boolean): boolean {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!active) { setSlow(false); return; }
+    const started = Date.now();
+    const t = setTimeout(() => setSlow(isSlowLookup(started, Date.now())), SLOW_LOOKUP_MS);
+    return () => clearTimeout(t);
+  }, [active]);
+  return slow;
+}
 const SOURCE_HOME: Record<Source, string> = {
   pubmed: "https://pubmed.ncbi.nlm.nih.gov/?term=",
   eric: "https://eric.ed.gov/?q=",
@@ -246,6 +264,8 @@ function SynPanel({ c, panel, expanded, setExpanded, pool, onAddKeyword, onAddVo
   pool: Pool; onAddKeyword: (t: string) => void; onAddVocab: (vocab: "mesh" | "eric", t: string) => void;
 }) {
   const isMesh = panel.vocab === "mesh";
+  // MeSH only: the ERIC Thesaurus is a bundled snapshot, so naming NLM would be wrong.
+  const slow = useSlowNotice(!!panel.loading && isMesh);
   const vocabPool = isMesh ? pool.mesh : pool.eric;
   const vocabColor = isMesh ? c.mesh : c.eric;
   const vocabBg = isMesh ? c.meshSoft : c.ericSoft;
@@ -297,7 +317,7 @@ function SynPanel({ c, panel, expanded, setExpanded, pool, onAddKeyword, onAddVo
         </div>
       </div>
       {panel.loading ? (
-        <div style={{ fontSize: 11.5, color: c.ink3, fontStyle: "italic" }}>Looking up synonyms…</div>
+        <div style={{ fontSize: 11.5, color: slow ? c.ink2 : c.ink3, fontStyle: "italic" }}>{slow ? SLOW_LOOKUP_NOTICE : "Looking up synonyms…"}</div>
       ) : panel.missing ? (
         <div style={{ fontSize: 11.5, color: c.ink3, fontStyle: "italic" }}>
           {isMesh ? "Couldn't find this heading in NLM's lookup — no entry terms available." : "Couldn't load the thesaurus snapshot. Check your connection and try again."}
@@ -327,6 +347,9 @@ function VocabExplorer({ c, source, pool, onAddKeyword, onAddVocab }: VocabExplo
   const [err, setErr] = useState("");
   const [details, setDetails] = useState<VocabDetailsState | null>(null);
   const epochRef = useRef(0);
+  // MeSH only, same reason as SynPanel above.
+  const slow = useSlowNotice(loading && vocab === "mesh");
+  const detailsSlow = useSlowNotice(!!details?.loading && vocab === "mesh");
 
   const runSearch = async (q: string) => {
     setQuery(q); setDetails(null);
@@ -362,7 +385,7 @@ function VocabExplorer({ c, source, pool, onAddKeyword, onAddVocab }: VocabExplo
         aria-label={`Search ${vocab === "mesh" ? "MeSH" : "ERIC Thesaurus"}`} style={inputStyle(c)} />
       <div style={{ marginTop: 6, fontSize: 10.5, color: c.ink3, fontFamily: MONO, letterSpacing: 0.3 }}>headings &amp; entry terms · expand a row for scope note, synonyms, hierarchy</div>
       <div role="status" aria-live="polite" style={{ marginTop: 8, maxHeight: 320, overflowY: "auto" }}>
-        {loading && <div style={{ fontSize: 12, color: c.ink3, padding: "4px 0" }}>Searching…</div>}
+        {loading && <div style={{ fontSize: 12, color: slow ? c.ink2 : c.ink3, padding: "4px 0" }}>{slow ? SLOW_LOOKUP_NOTICE : "Searching…"}</div>}
         {err && <div role="alert" style={{ fontSize: 12, color: c.error }}>{err}</div>}
         {!loading && !err && query.trim().length >= 2 && rows.length === 0 && (
           <div style={{ fontSize: 12, color: c.ink3, fontStyle: "italic" }}>No headings or entry terms match "{query}".</div>
@@ -390,7 +413,7 @@ function VocabExplorer({ c, source, pool, onAddKeyword, onAddVocab }: VocabExplo
               </div>
               {open && (
                 <div style={{ marginTop: 6, padding: "8px 10px", background: c.chipBg, borderRadius: 3 }}>
-                  {details?.loading ? <div style={{ fontSize: 11.5, color: c.ink3, fontStyle: "italic" }}>Looking up details…</div> : (
+                  {details?.loading ? <div style={{ fontSize: 11.5, color: detailsSlow ? c.ink2 : c.ink3, fontStyle: "italic" }}>{detailsSlow ? SLOW_LOOKUP_NOTICE : "Looking up details…"}</div> : (
                     <>
                       {details?.scopeNote && <div style={{ fontSize: 11.5, color: c.ink2, lineHeight: 1.5, marginBottom: 6 }}>{details.scopeNote}</div>}
                       {!!details?.terms?.length && (

@@ -16,7 +16,7 @@ import {
   ERIC_ADV_FIELDS, ericAssembleTerm, ericAuthorSearch, ericLookup, ericSearch,
 } from "./server/eric.js";
 import { withMatchedVia } from "./server/match.js";
-import { meshVocabDetails, meshVocabSearch } from "./server/mesh.js";
+import { isSlowLookup, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -217,7 +217,14 @@ export function createServer(): McpServer {
     },
     async ({ vocab, query }) => {
       try {
-        if (vocab === "mesh") return textResult({ rows: await meshVocabSearch(query) });
+        if (vocab === "mesh") {
+          // A slow NLM lookup is upstream, not a ReviewSeed fault — say so in the
+          // result so the answer explains the wait instead of just being late.
+          const started = Date.now();
+          const rows = await meshVocabSearch(query);
+          const slow = isSlowLookup(started, Date.now());
+          return textResult(slow ? { rows, slow, notice: SLOW_LOOKUP_NOTICE } : { rows });
+        }
         const rows = await ericThesaurusSearch(query);
         return rows === undefined
           ? textResult({ rows: [], error: `Couldn't load the ERIC Thesaurus ${ERIC_THESAURUS_EDITION} snapshot` })
@@ -237,7 +244,12 @@ export function createServer(): McpServer {
     },
     async ({ vocab, label, id }) => {
       try {
-        if (vocab === "mesh") return textResult(await meshVocabDetails(label, id));
+        if (vocab === "mesh") {
+          const started = Date.now();
+          const details = await meshVocabDetails(label, id);
+          const slow = isSlowLookup(started, Date.now());
+          return textResult(slow ? { ...details, slow, notice: SLOW_LOOKUP_NOTICE } : details);
+        }
         const details = await ericThesaurusDetails(label);
         return details === undefined
           ? textResult({ terms: [], bt: [], nt: [], scopeNote: "", error: `Couldn't load the ERIC Thesaurus ${ERIC_THESAURUS_EDITION} snapshot` })

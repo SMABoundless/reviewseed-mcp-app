@@ -527,5 +527,9 @@
         }
       ]
     }
+  },
+  "slowLookup": {
+    "ms": 4000,
+    "notice": "NLM's MeSH service is responding slowly — this is upstream, not ReviewSeed."
   }
 }

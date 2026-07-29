@@ -3,6 +3,25 @@ import type { VocabDetails, VocabRow } from "./types.js";
 const MESH_LOOKUP = "https://id.nlm.nih.gov/mesh/lookup/descriptor";
 const MESH_SPARQL = "https://id.nlm.nih.gov/mesh/sparql";
 
+// SHARED with the website (index.html defines the same two values, and
+// tests/fixtures/shared-surface.json pins them so they can't drift).
+//
+// On 2026-07-29 id.nlm.nih.gov degraded badly: time-to-first-byte on
+// /lookup/descriptor?match=contains measured 11.4-17.5s against ~0.18s
+// normal, while NCBI E-utilities and ERIC stayed sub-second and NLM's own
+// non-query paths stayed fast. Both surfaces sat on an indefinite "Looking
+// up…" with no way for a user to tell a slow vocabulary service from a broken
+// app. Past this threshold, say which service is slow.
+export const SLOW_LOOKUP_MS = 4000;
+export const SLOW_LOOKUP_NOTICE = "NLM's MeSH service is responding slowly — this is upstream, not ReviewSeed.";
+
+// True when `started` is far enough in the past that the caller should tell the
+// user which service they're waiting on. Time is passed in, not read here, so
+// both repos can agree on the rule without either reading its own clock.
+export function isSlowLookup(started: number, now: number): boolean {
+  return now - started >= SLOW_LOOKUP_MS;
+}
+
 async function sparql(query: string): Promise<{ results?: { bindings?: Record<string, { value: string }>[] } } | null> {
   try {
     const r = await fetch(`${MESH_SPARQL}?format=JSON&inference=false&query=${encodeURIComponent(query)}`);

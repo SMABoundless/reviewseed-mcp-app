@@ -1,7 +1,7 @@
 {
   "name": "reviewseed-mcp-app",
   "version": "2.0.0",
-  "description": "ReviewSeed MCP App — search PubMed, ClinicalTrials.gov, and ERIC; explore MeSH/ERIC vocabulary with synonyms and hierarchy; assemble Boolean or ten-framework (PICO, PECO, SPIDER, PCC, ...) search strings",
+  "description": "ReviewSeed MCP App \u2014 search PubMed, ClinicalTrials.gov, and ERIC; explore MeSH/ERIC vocabulary with synonyms and hierarchy; assemble Boolean or ten-framework (PICO, PECO, SPIDER, PCC, ...) search strings",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && tsc -p tsconfig.server.json && mkdir -p dist/server/assets && cp server/assets/eric-thesaurus-2025.json dist/server/assets/eric-thesaurus-2025.json && cross-env INPUT=mcp-app.html vite build",
@@ -12,7 +12,7 @@
     "test:unit": "cross-env REVIEWSEED_RATE_LIMIT_MS=0 tsx --test \"tests/unit/*.test.ts\"",
     "test:integration": "cross-env REVIEWSEED_RATE_LIMIT_MS=0 tsx --test \"tests/integration/*.test.ts\"",
     "test:live": "tsx --test \"tests/live/*.test.ts\"",
-    "snapshot": "tsx tests/scripts/gen-shared-surface.ts && tsx tests/scripts/gen-parser-expected.ts"
+    "snapshot": "tsx tests/scripts/gen-shared-surface.ts && tsx tests/scripts/gen-parser-expected.ts && tsx tests/scripts/gen-vocab-expected.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "latest",

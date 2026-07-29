@@ -6,7 +6,7 @@ npm run test:live     # hits the real APIs — run before releases / when upstre
 npm run snapshot      # regenerate the generated fixtures after changing shared config/parsers
 ```
 
-`npm test` typechecks, then runs the unit + integration suites (120 tests, ~1.7s, no network).
+`npm test` typechecks, then runs the unit + integration suites (129 tests, ~1.7s, no network).
 
 ## Layout
 
@@ -18,6 +18,7 @@ npm run snapshot      # regenerate the generated fixtures after changing shared 
 | `unit/shared-surface.test.ts` | **Cross-repo** — field lists + framework config snapshot | none |
 | `unit/parser-parity.test.ts` | **Cross-repo** — upstream-response parsers | none |
 | `unit/protocol.test.ts` | **Cross-repo** — the Search Protocol object (reporting foundation) | none |
+| `unit/vocab-parity.test.ts` | **Cross-repo** — MeSH vocabulary fetchers + the slow-lookup rule | none |
 | `unit/match.test.ts` | `matchedVia` word-boundary matching, regex escaping, immutability | none |
 | `unit/eric-thesaurus.test.ts` | Shipped ERIC Thesaurus snapshot: synonym search, ranking, hierarchy | none (local asset) |
 | `integration/tools.test.ts` | Real MCP client ↔ server over `InMemoryTransport`, all HTTP stubbed | stubbed |
@@ -43,9 +44,10 @@ Different kinds of shared surface need different fixture shapes:
 | `formatter-parity.json` | input → expected string | Same, for the leaf term formatters (`ericKwTerm`, `ctMeshTerm`, `*AssembleTerm`…). |
 | `shared-surface.json` | **generated** snapshot | **Data** (field lists, framework config). Compared directly — no hand-maintained third copy, so adding a field to one repo and not the other fails immediately. |
 | `parser-inputs.json` + `parser-expected.json` | canned upstream bytes → expected `Article` | **Parsers.** Feeding byte-identical payloads to both is the only way to separate real divergence from an upstream difference. |
+| `vocab-inputs.json` + `vocab-expected.json` | canned NLM payloads → expected `VocabRow[]` / details | **Fetchers.** Same reasoning as the parsers: these functions fetch, so byte-identical canned payloads are the only way to tell divergence from an upstream difference. Routes match on a URL substring; the three SPARQL uses are discriminated by text inside the encoded query. |
 | `protocol-parity.json` | input → expected object | **Behavior.** `buildSearchProtocol` is the seam every report reads, so the fixtures pin its decisions (absent-vs-empty selection maps, per-source `latestTotal`, seed-record dedup order) rather than letting either implementation define them. Compared as canonically-serialized JSON: key order may differ, array order may not. |
 
-`shared-surface.json` and `parser-expected.json` are **generated** by `npm run snapshot`. Their guard tests fail with "stale"
+`shared-surface.json`, `parser-expected.json` and `vocab-expected.json` are **generated** by `npm run snapshot`. Their guard tests fail with "stale"
 if the code changes without regenerating — that failure, plus the website's matching
 failure, is the drift signal.
 
@@ -59,6 +61,8 @@ held to it.
 - This app's PubMed articles set `src`, `eric` and `url`; the website's omit them (PubMed
   is its implicit default and its render layer compensates). The parser parity check
   compares the fields carrying parsed content and *reports* the shape difference.
+- The MeSH vocabulary fetchers were the last big un-checked shared surface; `vocab-inputs.json`
+  closed that on 2026-07-29. Still unchecked: `ncbiFetch`'s 429 retry behavior.
 - Not parity-checked on purpose: `pubmedSearch`'s orchestration. The website's takes
   `sort`/`dateFilter` and does reverse-pagination; this app's doesn't. The shared part is
   `efetchXml`'s parsing, not the flow around it.

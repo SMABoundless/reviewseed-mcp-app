@@ -1,0 +1,56 @@
+{
+  "search: a synonym resolves to its descriptor and reports the cross-reference": [
+    {
+      "id": "D009203",
+      "label": "Myocardial Infarction",
+      "via": "Heart Attack"
+    }
+  ],
+  "search: label matches rank first, and an entry term for an already-matched descriptor is dropped": [
+    {
+      "id": "D065290",
+      "label": "Acute-On-Chronic Liver Failure",
+      "via": null
+    },
+    {
+      "id": "D008099",
+      "label": "Liver",
+      "via": null
+    },
+    {
+      "id": "D008107",
+      "label": "Liver Cirrhosis",
+      "via": null
+    }
+  ],
+  "search: query shorter than two characters never hits the network": [],
+  "details: entry terms, broader/narrower split, and scope note": {
+    "terms": [
+      "Livers"
+    ],
+    "bt": [
+      "Digestive System"
+    ],
+    "nt": [
+      "Bile Ducts, Intrahepatic",
+      "Round Ligament of Liver"
+    ],
+    "scopeNote": "A large lobed glandular organ in the abdomen of vertebrates that is responsible for detoxification, metabolism, synthesis and storage of various substances."
+  },
+  "details: label NLM doesn't know degrades to empty rather than throwing": {
+    "terms": [],
+    "bt": [],
+    "nt": [],
+    "scopeNote": ""
+  },
+  "details: no descriptor id means no scope-note query, but hierarchy still resolves": {
+    "terms": [
+      "Livers"
+    ],
+    "bt": [
+      "Digestive System"
+    ],
+    "nt": [],
+    "scopeNote": ""
+  }
+}
