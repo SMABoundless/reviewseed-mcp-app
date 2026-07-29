@@ -792,6 +792,8 @@ function ReviewSeed() {
           <div style={{ fontFamily: SERIF, fontSize: 20, fontWeight: 500, letterSpacing: -0.5, color: c.ink }}>
             Review<span style={{ color: c.accent, fontStyle: "italic", fontWeight: 400 }}>Seed</span>
           </div>
+          {/* BETA pill — remove this span when ReviewSeed exits beta. */}
+          <span style={{ display: "inline-flex", alignItems: "center", height: 16, padding: "0 6px", marginLeft: 8, background: c.accent, color: c.bg, fontFamily: SANS, fontSize: 8.5, fontWeight: 600, letterSpacing: 1.3, textTransform: "uppercase", borderRadius: 8 }}>BETA</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button onClick={() => setAboutOpen(o => !o)} aria-expanded={aboutOpen} style={tbBtn(c)}>About</button>
