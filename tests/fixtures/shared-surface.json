@@ -531,5 +531,59 @@
   "slowLookup": {
     "ms": 4000,
     "notice": "NLM's MeSH service is responding slowly — this is upstream, not ReviewSeed."
+  },
+  "translation": {
+    "caveat": "Emit-only: ReviewSeed cannot run these platforms, so these strings are UNTESTED. Paste into the platform's own search box and verify the result count before relying on it.",
+    "platforms": [
+      {
+        "key": "ovid",
+        "label": "Ovid (MEDLINE / Embase)",
+        "vendor": "Ovid",
+        "vocabulary": "MeSH / Emtree",
+        "note": "`.mp.` is Ovid's multi-purpose field, the closest equivalent to All Fields; `exp` explodes the heading."
+      },
+      {
+        "key": "embase",
+        "label": "Embase.com",
+        "vendor": "Elsevier",
+        "vocabulary": "Emtree",
+        "note": "Embase.com requires single quotes. Emtree headings differ from MeSH — verify each heading exists in Emtree."
+      },
+      {
+        "key": "scopus",
+        "label": "Scopus",
+        "vendor": "Elsevier",
+        "vocabulary": "",
+        "note": "Scopus has no thesaurus of its own; headings are emitted as INDEXTERMS, which matches indexing supplied by the source database and will not explode."
+      },
+      {
+        "key": "wos",
+        "label": "Web of Science",
+        "vendor": "Clarivate",
+        "vocabulary": "",
+        "note": "Web of Science has no subject headings. Headings become topic (TS) phrases, so recall depends on the words appearing in the record."
+      },
+      {
+        "key": "ebsco",
+        "label": "EBSCO (CINAHL / PsycINFO)",
+        "vendor": "EBSCO",
+        "vocabulary": "CINAHL Subject Headings / APA Thesaurus",
+        "note": "MH with a trailing + explodes a CINAHL heading. For PsycINFO swap MH for DE and drop the +; the two thesauri do not share term forms."
+      },
+      {
+        "key": "proquest",
+        "label": "ProQuest",
+        "vendor": "ProQuest",
+        "vocabulary": "database-specific",
+        "note": "`su()` searches whichever subject vocabulary the selected ProQuest database uses, which varies by database."
+      },
+      {
+        "key": "cochrane",
+        "label": "Cochrane Library (CENTRAL)",
+        "vendor": "Wiley",
+        "vocabulary": "MeSH",
+        "note": "`[mh \"...\"]` explodes by default; prefix the heading with ^ to search it unexploded. CENTRAL indexing is thinner than MEDLINE's, so keywords carry more weight here."
+      }
+    ]
   }
 }

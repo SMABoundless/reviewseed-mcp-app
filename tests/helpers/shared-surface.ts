@@ -5,6 +5,7 @@ import { ERIC_ADV_FIELDS } from "../../server/eric.js";
 import { CT_ADV_FIELDS } from "../../server/trials.js";
 import { FRAMEWORKS } from "../../server/query.js";
 import { SLOW_LOOKUP_MS, SLOW_LOOKUP_NOTICE } from "../../server/mesh.js";
+import { PLATFORMS, PLATFORM_CAVEAT } from "../../server/translate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const SHARED_SURFACE_PATH = path.join(HERE, "..", "fixtures", "shared-surface.json");
@@ -30,5 +31,12 @@ export function buildSharedSurface() {
       buckets: f.buckets.map(b => ({ key: b.key, label: b.label })),
     }])),
     slowLookup: { ms: SLOW_LOOKUP_MS, notice: SLOW_LOOKUP_NOTICE },
+    // The emit-only translation roster. Data, not behavior: if one repo gains a
+    // platform (or edits a vendor note) and the other doesn't, this fails
+    // immediately instead of the two quietly offering different menus.
+    translation: {
+      caveat: PLATFORM_CAVEAT,
+      platforms: PLATFORMS.map(p => ({ key: p.key, label: p.label, vendor: p.vendor, vocabulary: p.vocabulary, note: p.note })),
+    },
   };
 }

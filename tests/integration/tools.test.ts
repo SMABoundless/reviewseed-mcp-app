@@ -32,6 +32,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_lookup",
     "reviewseed_open",
     "reviewseed_search",
+    "reviewseed_translate_query",
     "reviewseed_vocab_details",
     "reviewseed_vocab_search",
   ]);
@@ -44,7 +45,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -189,6 +190,41 @@ test("assemble_query in framework mode with no key lists all ten frameworks plus
   }));
   assert.equal(Object.keys(r.frameworks).length, 11);
   assert.ok(r.frameworks.PICO.buckets.length === 4);
+});
+
+// ── Translate query (headless, emit-only) ───────────────────────────────────
+
+test("translate_query emits every platform's syntax with no network", async () => {
+  const r = payload(await call("reviewseed_translate_query", {
+    pool: { keywords: ["heart attack"], mesh: ["Myocardial Infarction"], eric: [], queries: [], ericQueries: [], ctQueries: [] },
+  }));
+  const by = Object.fromEntries(r.platforms.map((p: any) => [p.key, p.query]));
+  assert.equal(by.ovid, '"heart attack".ti,ab. AND exp Myocardial Infarction/');
+  assert.equal(by.embase, "'heart attack':ti,ab AND 'Myocardial Infarction'/exp");
+  assert.equal(by.cochrane, '"heart attack":ti,ab AND [mh "Myocardial Infarction"]');
+});
+
+test("translate_query always carries the untested caveat — the strings cannot be verified here", async () => {
+  const r = payload(await call("reviewseed_translate_query", {
+    pool: { keywords: ["asthma"], mesh: [], eric: [], queries: [], ericQueries: [], ctQueries: [] },
+  }));
+  assert.match(r.caveat, /UNTESTED/);
+  assert.match(r.caveat, /verify the result count/);
+});
+
+test("translate_query can be narrowed to specific platforms", async () => {
+  const r = payload(await call("reviewseed_translate_query", {
+    pool: { keywords: ["asthma"], mesh: [], eric: [], queries: [], ericQueries: [], ctQueries: [] },
+    platforms: ["scopus", "wos"],
+  }));
+  assert.deepEqual(r.platforms.map((p: any) => p.key), ["scopus", "wos"]);
+});
+
+test("translate_query reports pooled snippets as untranslated instead of rewriting them", async () => {
+  const r = payload(await call("reviewseed_translate_query", {
+    pool: { keywords: [], mesh: [], eric: [], queries: ['("Asthma"[MeSH Terms])'], ericQueries: [], ctQueries: [] },
+  }));
+  assert.deepEqual(r.untranslated, ['("Asthma"[MeSH Terms])']);
 });
 
 // ── Compare queries ─────────────────────────────────────────────────────────

@@ -1,0 +1,117 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for the emit-only database translations (§3.4).",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: server/translate.ts (tests/unit/translation-parity.test.ts)",
+    "  - Website: index.html page globals platformTerm / buildPlatformQuery",
+    "    (~/code/pubmedseed/tests/verify-parity.mjs)",
+    "",
+    "BEHAVIOR fixture, hand-written on purpose. These strings are pasted by",
+    "librarians into platforms ReviewSeed cannot execute, so the expectations must be",
+    "pinned by a human who checked the vendor's syntax — not generated from whatever",
+    "the code currently emits, which would ratify a typo forever.",
+    "",
+    "Syntax decisions pinned here, each a common source of a broken paste:",
+    "  - Ovid puts the field code AFTER the term with periods (\".ti,ab.\"), uses / for",
+    "    subject headings, and 'exp' to explode. All Fields maps to .mp.",
+    "  - Embase.com requires SINGLE quotes, and /exp to explode an Emtree term.",
+    "  - Scopus and Web of Science have no thesaurus: headings degrade to INDEXTERMS()",
+    "    and TS=() respectively, and cannot explode.",
+    "  - EBSCO explodes a CINAHL heading with a trailing + inside the quotes.",
+    "  - Cochrane [mh \"...\"] explodes by default.",
+    "  - An apostrophe inside an Embase term is escaped by DOUBLING it.",
+    "",
+    "Advanced-search snippets are deliberately NOT translated (they're already in one",
+    "source's syntax); `untranslatedCases` pins that they're reported, not silently",
+    "dropped."
+  ],
+  "version": 1,
+  "termCases": [
+    { "name": "ovid keyword, default tiab", "platform": "ovid", "kind": "keyword", "term": "heart attack", "tag": "tiab", "expected": "\"heart attack\".ti,ab." },
+    { "name": "ovid keyword, title only", "platform": "ovid", "kind": "keyword", "term": "heart attack", "tag": "ti", "expected": "\"heart attack\".ti." },
+    { "name": "ovid keyword, abstract only", "platform": "ovid", "kind": "keyword", "term": "heart attack", "tag": "ab", "expected": "\"heart attack\".ab." },
+    { "name": "ovid keyword, all fields maps to multi-purpose", "platform": "ovid", "kind": "keyword", "term": "heart attack", "tag": "all", "expected": "\"heart attack\".mp." },
+    { "name": "ovid heading explodes", "platform": "ovid", "kind": "vocab", "term": "Myocardial Infarction", "tag": "tiab", "expected": "exp Myocardial Infarction/" },
+
+    { "name": "embase keyword uses single quotes", "platform": "embase", "kind": "keyword", "term": "heart attack", "tag": "tiab", "expected": "'heart attack':ti,ab" },
+    { "name": "embase keyword, all fields", "platform": "embase", "kind": "keyword", "term": "heart attack", "tag": "all", "expected": "'heart attack':ab,ti,kw,de" },
+    { "name": "embase escapes an apostrophe by doubling it", "platform": "embase", "kind": "keyword", "term": "Crohn's disease", "tag": "tiab", "expected": "'Crohn''s disease':ti,ab" },
+    { "name": "embase emtree term explodes", "platform": "embase", "kind": "vocab", "term": "myocardial infarction", "tag": "tiab", "expected": "'myocardial infarction'/exp" },
+
+    { "name": "scopus keyword, title/abstract", "platform": "scopus", "kind": "keyword", "term": "heart attack", "tag": "tiab", "expected": "TITLE-ABS(\"heart attack\")" },
+    { "name": "scopus keyword, title only", "platform": "scopus", "kind": "keyword", "term": "heart attack", "tag": "ti", "expected": "TITLE(\"heart attack\")" },
+    { "name": "scopus has no thesaurus, so headings become index terms", "platform": "scopus", "kind": "vocab", "term": "Myocardial Infarction", "tag": "tiab", "expected": "INDEXTERMS(\"Myocardial Infarction\")" },
+
+    { "name": "web of science keyword is a topic search", "platform": "wos", "kind": "keyword", "term": "heart attack", "tag": "tiab", "expected": "TS=(\"heart attack\")" },
+    { "name": "web of science abstract field", "platform": "wos", "kind": "keyword", "term": "heart attack", "tag": "ab", "expected": "AB=(\"heart attack\")" },
+    { "name": "web of science heading degrades to a topic phrase", "platform": "wos", "kind": "vocab", "term": "Myocardial Infarction", "tag": "tiab", "expected": "TS=(\"Myocardial Infarction\")" },
+
+    { "name": "ebsco tiab spans two fields", "platform": "ebsco", "kind": "keyword", "term": "heart attack", "tag": "tiab", "expected": "(TI \"heart attack\" OR AB \"heart attack\")" },
+    { "name": "ebsco all fields is full text", "platform": "ebsco", "kind": "keyword", "term": "heart attack", "tag": "all", "expected": "TX \"heart attack\"" },
+    { "name": "ebsco cinahl heading explodes with a trailing plus", "platform": "ebsco", "kind": "vocab", "term": "Myocardial Infarction", "tag": "tiab", "expected": "(MH \"Myocardial Infarction+\")" },
+
+    { "name": "proquest tiab spans two fields", "platform": "proquest", "kind": "keyword", "term": "heart attack", "tag": "tiab", "expected": "(ti(\"heart attack\") OR ab(\"heart attack\"))" },
+    { "name": "proquest subject field", "platform": "proquest", "kind": "vocab", "term": "Myocardial Infarction", "tag": "tiab", "expected": "su(\"Myocardial Infarction\")" },
+
+    { "name": "cochrane keyword, title/abstract", "platform": "cochrane", "kind": "keyword", "term": "heart attack", "tag": "tiab", "expected": "\"heart attack\":ti,ab" },
+    { "name": "cochrane keyword, all fields includes keywords", "platform": "cochrane", "kind": "keyword", "term": "heart attack", "tag": "all", "expected": "\"heart attack\":ti,ab,kw" },
+    { "name": "cochrane mesh descriptor explodes by default", "platform": "cochrane", "kind": "vocab", "term": "Myocardial Infarction", "tag": "tiab", "expected": "[mh \"Myocardial Infarction\"]" }
+  ],
+  "queryCases": [
+    {
+      "name": "ovid: keywords OR'd, headings OR'd, groups AND'd",
+      "platform": "ovid",
+      "pool": { "keywords": ["heart attack", "MI"], "mesh": ["Myocardial Infarction"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": { "MI": "ti" },
+      "expected": "(\"heart attack\".ti,ab. OR \"MI\".ti.) AND exp Myocardial Infarction/"
+    },
+    {
+      "name": "embase: single keyword needs no group parens",
+      "platform": "embase",
+      "pool": { "keywords": ["telehealth"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "'telehealth':ti,ab"
+    },
+    {
+      "name": "wos: MeSH and ERIC headings merge into one vocabulary group",
+      "platform": "wos",
+      "pool": { "keywords": [], "mesh": ["Telemedicine"], "eric": ["Distance Education"], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "(TS=(\"Telemedicine\") OR TS=(\"Distance Education\"))"
+    },
+    {
+      "name": "cochrane: keywords and headings across both groups",
+      "platform": "cochrane",
+      "pool": { "keywords": ["mindfulness"], "mesh": ["Mindfulness", "Meditation"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": "\"mindfulness\":ti,ab AND ([mh \"Mindfulness\"] OR [mh \"Meditation\"])"
+    },
+    {
+      "name": "empty pool translates to an empty string, not a stray operator",
+      "platform": "scopus",
+      "pool": { "keywords": [], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "expected": ""
+    },
+    {
+      "name": "advanced snippets are excluded from the translated string",
+      "platform": "scopus",
+      "pool": { "keywords": ["asthma"], "mesh": [], "eric": [], "queries": ["(\"Asthma\"[MeSH Terms])"], "ericQueries": [], "ctQueries": ["AREA[ConditionSearch]\"Asthma\""] },
+      "kwFields": {},
+      "expected": "TITLE-ABS(\"asthma\")"
+    }
+  ],
+  "untranslatedCases": [
+    {
+      "name": "every pooled snippet is reported as untranslated, in pool order",
+      "pool": { "keywords": ["asthma"], "mesh": [], "eric": [], "queries": ["(\"Asthma\"[MeSH Terms])"], "ericQueries": ["subject:\"Asthma\""], "ctQueries": ["AREA[ConditionSearch]\"Asthma\""] },
+      "expected": ["(\"Asthma\"[MeSH Terms])", "subject:\"Asthma\"", "AREA[ConditionSearch]\"Asthma\""]
+    },
+    {
+      "name": "no snippets means nothing to report",
+      "pool": { "keywords": ["asthma"], "mesh": ["Asthma"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "expected": []
+    }
+  ]
+}

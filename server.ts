@@ -17,6 +17,7 @@ import {
 } from "./server/eric.js";
 import { withMatchedVia } from "./server/match.js";
 import { isSlowLookup, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
+import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -364,6 +365,32 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Emit-only translations for platforms we cannot query ───────────────────
+  server.tool(
+    "reviewseed_translate_query",
+    "Translate a curated term pool into the search syntax of platforms ReviewSeed CANNOT query — " +
+    "Ovid (MEDLINE/Embase), Embase.com, Scopus, Web of Science, EBSCO (CINAHL/PsycINFO), ProQuest, and the " +
+    "Cochrane Library. Returns one string per platform plus a per-platform note on what that syntax can't do " +
+    "(Scopus and Web of Science have no thesaurus, so headings can't explode; Emtree and CINAHL headings differ " +
+    "from MeSH). These strings are UNTESTED by construction — there is no API to run them against — so always " +
+    "pass the caveat on to the user and tell them to verify the result count in the platform itself. Pooled " +
+    "advanced-search snippets are reported under `untranslated` rather than machine-rewritten between vendors.",
+    {
+      pool: poolSchema,
+      kwFields: kwFieldsSchema.describe(`Per-keyword field tag; defaults to tiab. ${KW_FIELD_TAGS}`),
+      platforms: z.array(z.enum(PLATFORMS.map(p => p.key) as [string, ...string[]]))
+        .default([])
+        .describe("Restrict to these platform keys; omit or leave empty for all of them"),
+    },
+    async ({ pool, kwFields, platforms }) => {
+      try {
+        const m = buildTranslationMatrix(pool, kwFields);
+        const wanted = platforms.length ? m.platforms.filter(p => platforms.includes(p.key)) : m.platforms;
+        return textResult({ ...m, platforms: wanted });
       } catch (e) { return errorResult(e); }
     },
   );
