@@ -21,7 +21,7 @@ import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
-import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS } from "./server/query.js";
+import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS, restrictToIds } from "./server/query.js";
 import type { Source } from "./server/types.js";
 
 // When compiled, server.js lives inside dist/ alongside mcp-app.html
@@ -365,6 +365,107 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Recall validation against a known-item (seed) set ──────────────────────
+  server.tool(
+    "reviewseed_validate_recall",
+    "Relative-recall check: does a search string actually retrieve the records it was built from? Give it the " +
+    "query and the seed record ids (PMIDs, ERIC accessions, or NCT ids) and it reports which seeds the query " +
+    "finds and which it MISSES — the standard known-item test for a systematic-review search. Optionally pass " +
+    "`pool` and `kwFields` to also get leave-one-out term criticality: each term is dropped in turn and the " +
+    "check re-run, showing which terms are load-bearing for recall and which can be pruned without losing a " +
+    "single seed. Costs one search per variant, run sequentially against the source's rate limit, so keep the " +
+    "term list to what you actually want tested.",
+    {
+      source: sourceEnum,
+      query: z.string().describe("The assembled search string to test"),
+      seedIds: z.array(z.string()).min(1).max(50)
+        .describe("Record ids the query SHOULD retrieve — PMIDs, ERIC accessions (EJ…/ED…), or NCT ids"),
+      pool: poolSchema.optional().describe("Pass the term pool to also run leave-one-out term criticality"),
+      kwFields: kwFieldsSchema,
+      leaveOneOut: z.boolean().default(false)
+        .describe("Run the leave-one-out pass. Requires `pool`. One extra search per pooled term."),
+    },
+    async ({ source, query, seedIds, pool, kwFields, leaveOneOut }) => {
+      try {
+        // Which seeds does a given string retrieve? One search per string: AND
+        // the string with a clause matching only the seed ids and read back the
+        // surviving ids, rather than one search per seed.
+        const retrieved = async (q: string): Promise<string[]> => {
+          const restricted = restrictToIds(source, q, seedIds);
+          if (!restricted) return [];
+          const r = source === "eric" ? await ericSearch(restricted, 1, Math.min(seedIds.length, 50))
+            : source === "trials" ? await ctSearch(restricted, 1)
+            : await pubmedSearch(restricted, 1, Math.min(seedIds.length, 50));
+          const found = new Set(r.articles.map(a => a.pmid));
+          return seedIds.filter(id => found.has(id));
+        };
+
+        const hits = await retrieved(query);
+        const missed = seedIds.filter(id => !hits.includes(id));
+        const base = {
+          query,
+          seedCount: seedIds.length,
+          retrieved: hits,
+          missed,
+          recall: seedIds.length ? Number((hits.length / seedIds.length).toFixed(3)) : null,
+          // A miss is not necessarily a bad query: the record may genuinely lack
+          // the concepts, or not be indexed yet. Say so rather than implying fault.
+          interpretation: missed.length === 0
+            ? "Every seed record is retrieved. That's the floor, not proof of sensitivity — it says the query doesn't exclude what you already know."
+            : `${missed.length} of ${seedIds.length} seed records are NOT retrieved. Inspect each: the record may lack the pooled terms, may not be indexed yet, or the query may be too narrow.`,
+        };
+
+        if (!leaveOneOut || !pool) return textResult(base);
+
+        // Leave-one-out: drop each term, rebuild, re-check. Sequential —
+        // concurrent bursts against NCBI measurably increase 429s.
+        const terms: Array<{ kind: "keywords" | "mesh" | "eric"; label: string }> = [
+          ...(pool.keywords ?? []).map(label => ({ kind: "keywords" as const, label })),
+          ...(pool.mesh ?? []).map(label => ({ kind: "mesh" as const, label })),
+          ...(pool.eric ?? []).map(label => ({ kind: "eric" as const, label })),
+        ];
+        const criticality = [];
+        for (const t of terms) {
+          const without = { ...pool, [t.kind]: (pool[t.kind] ?? []).filter(x => x !== t.label) };
+          const q = buildBooleanQuery(without, kwFields, {}, source);
+          // Dropping the last term leaves no query at all. "Everything is lost"
+          // is true but says nothing about the term, so report the degenerate
+          // case as itself rather than dressing it up as criticality.
+          if (!q.trim()) {
+            criticality.push({
+              term: t.label,
+              pool: t.kind,
+              seedsLostWithoutIt: [],
+              critical: null,
+              emptyWithoutIt: true,
+              note: "Not testable by leave-one-out: it's the only term, so removing it leaves no query to run.",
+            });
+            continue;
+          }
+          const got = await retrieved(q);
+          const lost = hits.filter(id => !got.includes(id));
+          criticality.push({
+            term: t.label,
+            pool: t.kind,
+            seedsLostWithoutIt: lost,
+            critical: lost.length > 0,
+            emptyWithoutIt: false,
+            note: lost.length
+              ? `Removing it loses ${lost.length} seed record(s) — load-bearing for recall.`
+              : "No seed is lost without it. Prunable for precision, though it may still matter for records outside the seed set.",
+          });
+        }
+        return textResult({
+          ...base,
+          criticality,
+          prunable: criticality.filter(c => c.critical === false).map(c => c.term),
+          untestable: criticality.filter(c => c.emptyWithoutIt).map(c => c.term),
+          searchesRun: 1 + criticality.filter(c => !c.emptyWithoutIt).length,
+        });
       } catch (e) { return errorResult(e); }
     },
   );

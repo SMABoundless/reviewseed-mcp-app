@@ -6,7 +6,7 @@ npm run test:live     # hits the real APIs — run before releases / when upstre
 npm run snapshot      # regenerate the generated fixtures after changing shared config/parsers
 ```
 
-`npm test` typechecks, then runs the unit + integration suites (170 tests, ~1.7s, no network).
+`npm test` typechecks, then runs the unit + integration suites (184 tests, ~1.7s, no network).
 
 ## Layout
 
@@ -65,6 +65,8 @@ held to it.
   compares the fields carrying parsed content and *reports* the shape difference.
 - The MeSH vocabulary fetchers were the last big un-checked shared surface; `vocab-inputs.json`
   closed that on 2026-07-29. Still unchecked: `ncbiFetch`'s 429 retry behavior.
+- Recall validation shares only `idClause`/`restrictToIds` (fixtures under `idClauseCases`).
+  The orchestration around them is per-surface by design, like `pubmedSearch`'s already is.
 - Not parity-checked on purpose: `pubmedSearch`'s orchestration. The website's takes
   `sort`/`dateFilter` and does reverse-pagination; this app's doesn't. The shared part is
   `efetchXml`'s parsing, not the flow around it.

@@ -6,7 +6,7 @@
 // If the two ever drift, one side goes red.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildBooleanQuery, buildFrameworkQuery } from "../../server/query.js";
+import { buildBooleanQuery, buildFrameworkQuery, idClause, restrictToIds } from "../../server/query.js";
 import { loadParityFixtures } from "../helpers/fixtures.js";
 
 const fixtures = loadParityFixtures();
@@ -27,3 +27,16 @@ for (const c of fixtures.framework) {
     assert.equal(buildFrameworkQuery(c.frameworkKey, c.buckets, c.pool, c.kwFields, c.target), c.expected);
   });
 }
+
+// ── Recall-validation id clauses ────────────────────────────────────────────
+for (const c of (fixtures as any).idClauseCases ?? []) {
+  test(`id clause parity: ${c.name}`, () => {
+    assert.equal(idClause(c.source, c.ids), c.expectedClause);
+    assert.equal(restrictToIds(c.source, c.query, c.ids), c.expectedRestricted);
+  });
+}
+
+test("id-clause fixtures cover all three sources", () => {
+  const sources = new Set(((fixtures as any).idClauseCases ?? []).map((c: any) => c.source));
+  assert.deepEqual([...sources].sort(), ["eric", "pubmed", "trials"]);
+});

@@ -134,3 +134,37 @@ export function buildFrameworkQuery(
     return parts.length > 1 ? `(${parts.join(" OR ")})` : (parts[0] ?? null);
   }).filter((x): x is string => x !== null).join("\nAND ");
 }
+
+// ── Recall validation: restrict a query to specific records ───────────────────
+// SHARED LOGIC (twin: index.html's page-global idClause; fixtures in
+// tests/fixtures/query-parity.json under `idClauseCases`).
+//
+// Recall validation asks "does my query retrieve the seed records it was built
+// from?" The cheap way to answer it is one search per variant rather than one
+// per seed: AND the query with a clause matching only the seed ids, and read
+// back which ids survive.
+//
+// Each form was verified against the live API on 2026-07-30, with a negative
+// control confirming a non-matching query returns zero rather than everything:
+//   PubMed  (Q) AND (123[uid] OR 456[uid])
+//   ERIC    (Q) AND (id:EJ123 OR id:EJ456)
+//   Trials  (Q) AND AREA[NCTId](NCT123 OR NCT456)
+// Getting this wrong doesn't error — it reports 0% recall, which reads as a
+// catastrophically broken search rather than a broken clause. Hence the
+// fixtures and the live check.
+export function idClause(source: Source, ids: string[]): string {
+  const clean = ids.map(s => String(s).trim()).filter(Boolean);
+  if (!clean.length) return "";
+  if (source === "eric")   return `(${clean.map(id => `id:${id}`).join(" OR ")})`;
+  if (source === "trials") return `AREA[NCTId](${clean.join(" OR ")})`;
+  return `(${clean.map(id => `${id}[uid]`).join(" OR ")})`;
+}
+
+/** `query` restricted to `ids`. Returns "" when there's nothing to restrict. */
+export function restrictToIds(source: Source, query: string, ids: string[]): string {
+  const clause = idClause(source, ids);
+  if (!clause) return "";
+  if (!query.trim()) return clause;
+  // The query may contain top-level ORs, so it always gets its own parens.
+  return `(${query.replace(/\n/g, " ").trim()}) AND ${clause}`;
+}

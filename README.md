@@ -37,7 +37,8 @@ Claude / Host
             ├─ reviewseed_vocab_details      → scope note, entry terms, broader/narrower
             ├─ reviewseed_author_search      → everything an author published, per source
             ├─ reviewseed_assemble_query     → Boolean or 10-framework string, in the target's syntax
-            └─ reviewseed_translate_query    → emit-only syntax for Ovid/Embase/Scopus/WoS/EBSCO/ProQuest/Cochrane
+            ├─ reviewseed_translate_query    → emit-only syntax for Ovid/Embase/Scopus/WoS/EBSCO/ProQuest/Cochrane
+            └─ reviewseed_validate_recall    → known-item test + leave-one-out term criticality
 ```
 
 **Tools exposed:**
@@ -53,6 +54,7 @@ Claude / Host
 | `reviewseed_author_search` | UI or Claude | Everything an author published in the chosen source |
 | `reviewseed_assemble_query` | UI or Claude | Build a Boolean or framework string from a term pool — headless-friendly |
 | `reviewseed_translate_query` | Claude | Translate a pool into seven platforms ReviewSeed **cannot** query. Emit-only and therefore untested — always pass the caveat on |
+| `reviewseed_validate_recall` | Claude | Does the query retrieve the seeds it was built from? Reports misses, and optionally which terms are load-bearing for recall |
 
 ### Source layout
 
@@ -72,7 +74,7 @@ server/
                         (pool + selections + provenance + search log), pure, injected clock
   translate.ts          emit-only vendor syntax for the 7 platforms ReviewSeed can't query —
                         strings a human pastes, never executed here, so the caveat travels with them
-server.ts               registers all 10 tools + the UI resource
+server.ts               registers all 11 tools + the UI resource
 main.ts                 HTTP (Express) / stdio entry point + REST fallback (/api/search, /api/lookup, /api/vocab)
 src/mcp-app.tsx          the React UI (source switcher, 4 input modes, vocab explorer, both builders)
 ```

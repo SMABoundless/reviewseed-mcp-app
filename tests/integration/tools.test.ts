@@ -33,6 +33,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_open",
     "reviewseed_search",
     "reviewseed_translate_query",
+    "reviewseed_validate_recall",
     "reviewseed_vocab_details",
     "reviewseed_vocab_search",
   ]);
@@ -45,7 +46,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -190,6 +191,100 @@ test("assemble_query in framework mode with no key lists all ten frameworks plus
   }));
   assert.equal(Object.keys(r.frameworks).length, 11);
   assert.ok(r.frameworks.PICO.buckets.length === 4);
+});
+
+// ── Recall validation ───────────────────────────────────────────────────────
+
+test("validate_recall reports which seeds the query finds and which it misses", async () => {
+  // The mocked esearch returns only 111, so 222 is a genuine miss.
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111", title: "Found" }]) },
+  ]);
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: '"gabapentin"[tiab]', seedIds: ["111", "222"],
+  }));
+  assert.deepEqual(r.retrieved, ["111"]);
+  assert.deepEqual(r.missed, ["222"]);
+  assert.equal(r.recall, 0.5);
+  assert.match(r.interpretation, /NOT retrieved/);
+});
+
+test("validate_recall restricts by id rather than one search per seed", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111", "222"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }, { pmid: "222" }]) },
+  ]);
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: "asthma", seedIds: ["111", "222"],
+  }));
+  assert.equal(r.recall, 1);
+  assert.match(r.interpretation, /floor, not proof/);
+  const searches = mock.callsMatching("esearch.fcgi");
+  assert.equal(searches.length, 1, "two seeds must cost one search, not two");
+  assert.match(decodeURIComponent(searches[0].url), /111\[uid\] OR 222\[uid\]/);
+});
+
+test("validate_recall's leave-one-out pass separates load-bearing terms from prunable ones", async () => {
+  // Every restricted search returns both seeds, so no term is load-bearing —
+  // which is exactly the "prunable" signal.
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111", "222"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }, { pmid: "222" }]) },
+  ]);
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: '"a"[tiab] OR "b"[tiab]', seedIds: ["111", "222"],
+    pool: { keywords: ["a", "b"], mesh: [], eric: [], queries: [], ericQueries: [], ctQueries: [] },
+    leaveOneOut: true,
+  }));
+  assert.equal(r.criticality.length, 2);
+  assert.deepEqual(r.prunable.sort(), ["a", "b"]);
+  assert.equal(r.searchesRun, 3, "one baseline plus one per term");
+  for (const c of r.criticality) assert.match(c.note, /Prunable/);
+});
+
+test("validate_recall reports a term as critical when dropping it loses a seed", async () => {
+  // Baseline finds both; every leave-one-out search finds only 111. The pool has
+  // two terms, so dropping either still leaves a runnable query.
+  mock = installMockFetch([
+    { match: "esearch.fcgi", sequence: [
+      { body: esearchJson(["111", "222"]) },
+      { body: esearchJson(["111"]) },
+    ] },
+    { match: "efetch.fcgi", sequence: [
+      { body: efetchXml([{ pmid: "111" }, { pmid: "222" }]) },
+      { body: efetchXml([{ pmid: "111" }]) },
+    ] },
+  ]);
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: '"a"[tiab] OR "b"[tiab]', seedIds: ["111", "222"],
+    pool: { keywords: ["a", "b"], mesh: [], eric: [], queries: [], ericQueries: [], ctQueries: [] },
+    leaveOneOut: true,
+  }));
+  assert.equal(r.criticality[0].critical, true);
+  assert.deepEqual(r.criticality[0].seedsLostWithoutIt, ["222"]);
+  assert.deepEqual(r.prunable, []);
+  assert.match(r.criticality[0].note, /load-bearing/);
+});
+
+test("validate_recall calls a sole term untestable rather than pretending it's critical", async () => {
+  // Dropping the only term leaves an empty query: "everything is lost" would be
+  // true and meaningless, so it must not read as criticality.
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }]) },
+  ]);
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: '"a"[tiab]', seedIds: ["111"],
+    pool: { keywords: ["a"], mesh: [], eric: [], queries: [], ericQueries: [], ctQueries: [] },
+    leaveOneOut: true,
+  }));
+  assert.equal(r.criticality[0].critical, null, "neither critical nor prunable");
+  assert.equal(r.criticality[0].emptyWithoutIt, true);
+  assert.deepEqual(r.criticality[0].seedsLostWithoutIt, []);
+  assert.deepEqual(r.prunable, [], "an untestable term is not prunable");
+  assert.deepEqual(r.untestable, ["a"]);
+  assert.equal(r.searchesRun, 1, "no search is wasted on an empty variant");
 });
 
 // ── Translate query (headless, emit-only) ───────────────────────────────────
