@@ -6,7 +6,7 @@ npm run test:live     # hits the real APIs — run before releases / when upstre
 npm run snapshot      # regenerate the generated fixtures after changing shared config/parsers
 ```
 
-`npm test` typechecks, then runs the unit + integration suites (185 tests, ~1.7s, no network).
+`npm test` typechecks, then runs the unit + integration suites (198 tests, ~1.7s, no network).
 
 ## Layout
 

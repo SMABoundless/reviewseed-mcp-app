@@ -6,7 +6,7 @@
 // If the two ever drift, one side goes red.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildBooleanQuery, buildFrameworkQuery, idClause, restrictToIds } from "../../server/query.js";
+import { buildBooleanQuery, buildFrameworkQuery, idClause, matrixCellQuery, restrictToIds } from "../../server/query.js";
 import { loadParityFixtures } from "../helpers/fixtures.js";
 
 const fixtures = loadParityFixtures();
@@ -39,4 +39,17 @@ for (const c of (fixtures as any).idClauseCases ?? []) {
 test("id-clause fixtures cover all three sources", () => {
   const sources = new Set(((fixtures as any).idClauseCases ?? []).map((c: any) => c.source));
   assert.deepEqual([...sources].sort(), ["eric", "pubmed", "trials"]);
+});
+
+// ── Evidence gap map cells ──────────────────────────────────────────────────
+for (const c of (fixtures as any).matrixCellCases ?? []) {
+  test(`matrix cell parity: ${c.name}`, () => {
+    assert.equal(matrixCellQuery(c.source, c.a, c.b, c.kwFields), c.expected);
+  });
+}
+
+test("a matrix cell is an intersection, never a union", () => {
+  const q = matrixCellQuery("pubmed", { label: "a", kind: "keyword" }, { label: "b", kind: "keyword" });
+  assert.ok(q.includes(" AND "), "two concepts must be AND'd");
+  assert.ok(!q.includes(" OR "), "OR would count the union, which is not what a gap map shows");
 });

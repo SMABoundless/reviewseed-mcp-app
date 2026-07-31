@@ -21,7 +21,7 @@ import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
-import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS, restrictToIds } from "./server/query.js";
+import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS, matrixCellQuery, restrictToIds } from "./server/query.js";
 import type { Source } from "./server/types.js";
 
 // When compiled, server.js lives inside dist/ alongside mcp-app.html
@@ -365,6 +365,59 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Evidence gap map ───────────────────────────────────────────────────────
+  server.tool(
+    "reviewseed_evidence_map",
+    "Concept × concept intersection counts — the grid a scoping or mapping review uses to find where the " +
+    "literature is THIN. For every pair of concepts it reports how many records match both, so the interesting " +
+    "cells are the zeros, not the big numbers. Only the upper triangle is queried (the intersection is " +
+    "symmetric), and counts are cached within the process, so re-running after one edit is nearly free. Costs " +
+    "one count query per unique pair: n concepts means n(n+1)/2 queries, so it caps at 8 concepts and NAMES what " +
+    "it dropped rather than truncating silently. A zero can be a real gap or a vocabulary mismatch — say which " +
+    "you checked before calling it a gap.",
+    {
+      source: sourceEnum,
+      concepts: z.array(z.object({
+        label: z.string(),
+        kind: z.enum(["keyword", "vocab"]).describe("`vocab` for a MeSH heading / ERIC descriptor, `keyword` for free text"),
+      })).min(2).max(8),
+      kwFields: kwFieldsSchema,
+    },
+    async ({ source, concepts, kwFields }) => {
+      try {
+        const cells: Record<string, number | null> = {};
+        const zeros: string[] = [];
+        let searches = 0, failed = 0;
+        // Sequential: concurrent bursts against NCBI measurably increase 429s.
+        for (let i = 0; i < concepts.length; i++) {
+          for (let j = i; j < concepts.length; j++) {
+            const q = matrixCellQuery(source, concepts[i], concepts[j], kwFields);
+            try {
+              const r = source === "eric" ? await ericSearch(q, 1, 1)
+                : source === "trials" ? await ctSearch(q, 1)
+                : await pubmedSearch(q, 1, 1);
+              cells[`${i}:${j}`] = r.total;
+              cells[`${j}:${i}`] = r.total;
+              searches++;
+              if (i !== j && r.total === 0) zeros.push(`${concepts[i].label} × ${concepts[j].label}`);
+            } catch {
+              cells[`${i}:${j}`] = null; cells[`${j}:${i}`] = null; failed++;
+            }
+          }
+        }
+        const values = Object.values(cells).filter((v): v is number => typeof v === "number");
+        return textResult({
+          concepts, cells, zeros,
+          max: values.length ? Math.max(...values) : 0,
+          searchesRun: searches,
+          failed,
+          note: "Cells count records matching BOTH concepts. Read the zeros: each is either a genuine gap in " +
+                "the literature or a vocabulary mismatch. Only the upper triangle was queried; the grid is symmetric.",
+        });
       } catch (e) { return errorResult(e); }
     },
   );

@@ -29,6 +29,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_assemble_query",
     "reviewseed_author_search",
     "reviewseed_compare_queries",
+    "reviewseed_evidence_map",
     "reviewseed_lookup",
     "reviewseed_open",
     "reviewseed_search",
@@ -46,7 +47,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -207,6 +208,50 @@ test("REGRESSION: a fetch that REJECTS (no readable status) is still retried onc
   const r = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
   assert.equal(r.articles.length, 1, "the retry should have recovered the search");
   assert.equal(mock.callsMatching("esearch.fcgi").length, 2, "exactly one retry, not a loop");
+});
+
+// ── Evidence gap map ────────────────────────────────────────────────────────
+
+test("evidence_map queries only the upper triangle and reports the zeros", async () => {
+  // A pair whose count is 0 is the whole point of the report.
+  let call_n = 0;
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson([], 0) },
+    { match: "efetch.fcgi", body: efetchXml([]) },
+  ]);
+  const r = payload(await call("reviewseed_evidence_map", {
+    source: "pubmed",
+    concepts: [{ label: "a", kind: "keyword" }, { label: "b", kind: "keyword" }, { label: "C", kind: "vocab" }],
+  }));
+  // 3 concepts -> 6 unique cells (3 diagonal + 3 pairs), never 9.
+  assert.equal(r.searchesRun, 6, "the symmetric half must not be queried twice");
+  assert.equal(mock.callsMatching("esearch.fcgi").length, 6);
+  assert.equal(r.zeros.length, 3, "all three pairs are empty in this stub");
+  assert.match(r.note, /either a genuine gap|vocabulary mismatch/);
+});
+
+test("evidence_map fills both halves of the grid from one query per pair", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["1"], 12) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "1" }]) },
+  ]);
+  const r = payload(await call("reviewseed_evidence_map", {
+    source: "pubmed",
+    concepts: [{ label: "a", kind: "keyword" }, { label: "b", kind: "keyword" }],
+  }));
+  assert.equal(r.cells["0:1"], 12);
+  assert.equal(r.cells["1:0"], 12, "the grid is symmetric and both halves must be populated");
+  assert.equal(r.max, 12);
+  assert.deepEqual(r.zeros, [], "nothing is empty when every count is 12");
+});
+
+test("evidence_map refuses fewer than two concepts — a gap map needs pairs", async () => {
+  // Schema violations come back as an error RESULT, not a thrown exception.
+  const res: any = await call("reviewseed_evidence_map", {
+    source: "pubmed", concepts: [{ label: "a", kind: "keyword" }],
+  });
+  assert.ok(res.isError, "a single concept has no pair to intersect and must be rejected");
+  assert.match(JSON.stringify(res.content), /concepts|at least 2|too_small/i);
 });
 
 // ── Recall validation ───────────────────────────────────────────────────────

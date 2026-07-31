@@ -22,7 +22,12 @@
     "`idClauseCases` cover idClause/restrictToIds — the per-source 'restrict to these",
     "records' clause that recall validation is built on. Each form was verified against",
     "the live API on 2026-07-30 with a negative control. A wrong clause here doesn't",
-    "error; it reports 0% recall, which reads as a catastrophically broken search."
+    "error; it reports 0% recall, which reads as a catastrophically broken search.",
+    "",
+    "`matrixCellCases` cover matrixCellQuery — one cell of the evidence gap map's",
+    "concept x concept grid. A cell is always an AND (buildBooleanQuery would OR",
+    "same-kind terms, which is the opposite of an intersection), and the diagonal",
+    "collapses to the single term rather than ANDing a term with itself."
   ],
   "version": 1,
   "boolean": [
@@ -628,6 +633,137 @@
       "expectedClause": "(1[uid] OR 2[uid])",
       "query": "",
       "expectedRestricted": "(1[uid] OR 2[uid])"
+    }
+  ],
+  "matrixCellCases": [
+    {
+      "name": "pubmed: keyword x keyword",
+      "source": "pubmed",
+      "a": {
+        "label": "telehealth",
+        "kind": "keyword"
+      },
+      "b": {
+        "label": "rural",
+        "kind": "keyword"
+      },
+      "kwFields": {},
+      "expected": "\"telehealth\"[tiab] AND \"rural\"[tiab]"
+    },
+    {
+      "name": "pubmed: keyword field tags are honored per term",
+      "source": "pubmed",
+      "a": {
+        "label": "telehealth",
+        "kind": "keyword"
+      },
+      "b": {
+        "label": "rural",
+        "kind": "keyword"
+      },
+      "kwFields": {
+        "telehealth": "ti",
+        "rural": "ab"
+      },
+      "expected": "\"telehealth\"[ti] AND \"rural\"[ab]"
+    },
+    {
+      "name": "pubmed: vocab x vocab uses MeSH tags",
+      "source": "pubmed",
+      "a": {
+        "label": "Telemedicine",
+        "kind": "vocab"
+      },
+      "b": {
+        "label": "Rural Health",
+        "kind": "vocab"
+      },
+      "kwFields": {},
+      "expected": "\"Telemedicine\"[MeSH Terms] AND \"Rural Health\"[MeSH Terms]"
+    },
+    {
+      "name": "pubmed: mixed keyword x vocab",
+      "source": "pubmed",
+      "a": {
+        "label": "telehealth",
+        "kind": "keyword"
+      },
+      "b": {
+        "label": "Rural Health",
+        "kind": "vocab"
+      },
+      "kwFields": {},
+      "expected": "\"telehealth\"[tiab] AND \"Rural Health\"[MeSH Terms]"
+    },
+    {
+      "name": "the diagonal collapses to the single term",
+      "source": "pubmed",
+      "a": {
+        "label": "telehealth",
+        "kind": "keyword"
+      },
+      "b": {
+        "label": "telehealth",
+        "kind": "keyword"
+      },
+      "kwFields": {},
+      "expected": "\"telehealth\"[tiab]"
+    },
+    {
+      "name": "same label but different kinds is still an intersection",
+      "source": "pubmed",
+      "a": {
+        "label": "Mindfulness",
+        "kind": "keyword"
+      },
+      "b": {
+        "label": "Mindfulness",
+        "kind": "vocab"
+      },
+      "kwFields": {},
+      "expected": "\"Mindfulness\"[tiab] AND \"Mindfulness\"[MeSH Terms]"
+    },
+    {
+      "name": "eric: keyword x descriptor",
+      "source": "eric",
+      "a": {
+        "label": "distance education",
+        "kind": "keyword"
+      },
+      "b": {
+        "label": "Rural Schools",
+        "kind": "vocab"
+      },
+      "kwFields": {},
+      "expected": "(title:\"distance education\" OR description:\"distance education\") AND subject:\"Rural Schools\""
+    },
+    {
+      "name": "trials: keyword (bare phrase, its BasicSearch default) x mesh-derived term",
+      "source": "trials",
+      "a": {
+        "label": "mindfulness",
+        "kind": "keyword"
+      },
+      "b": {
+        "label": "Anxiety",
+        "kind": "vocab"
+      },
+      "kwFields": {},
+      "expected": "\"mindfulness\" AND (AREA[ConditionSearch]\"Anxiety\" OR AREA[InterventionSearch]\"Anxiety\")"
+    },
+    {
+      "name": "an empty label yields no query rather than a dangling AND",
+      "source": "pubmed",
+      "a": {
+        "label": "",
+        "kind": "keyword"
+      },
+      "b": {
+        "label": "rural",
+        "kind": "keyword"
+      },
+      "kwFields": {},
+      "expected": ""
     }
   ]
 }

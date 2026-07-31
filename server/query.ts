@@ -168,3 +168,30 @@ export function restrictToIds(source: Source, query: string, ids: string[]): str
   // The query may contain top-level ORs, so it always gets its own parens.
   return `(${query.replace(/\n/g, " ").trim()}) AND ${clause}`;
 }
+
+// ── Evidence gap map: one cell of a concept × concept matrix ──────────────────
+// SHARED LOGIC (twin: index.html's page-global matrixCellQuery; fixtures under
+// `matrixCellCases` in tests/fixtures/query-parity.json).
+//
+// A mapping/scoping review wants to know where the literature is thin: for every
+// pair of concepts, how many records match BOTH. That's one count query per cell,
+// so the cell query has to be minimal — no field lists, no sorting, just the
+// intersection expressed in the source's own syntax.
+//
+// Deliberately NOT buildBooleanQuery with a two-term pool: that ORs same-kind
+// terms together, which is the opposite of what a cell means. A cell is always
+// an AND, whatever kinds the two concepts are.
+export interface MatrixConcept {
+  label: string;
+  kind: "keyword" | "vocab";
+}
+
+export function matrixCellQuery(source: Source, a: MatrixConcept, b: MatrixConcept, kwFields: KwFields = {}): string {
+  const one = (c: MatrixConcept) => c.kind === "vocab" ? vocabTerm(c.label, source) : kwTerm(c.label, kwFields, source);
+  if (!a?.label?.trim() || !b?.label?.trim()) return "";
+  // The diagonal is a concept against itself; counting the intersection of a
+  // term with itself is just that term's own total, and doubling it up reads as
+  // a mistake in an exported query.
+  if (a.label === b.label && a.kind === b.kind) return one(a);
+  return `${one(a)} AND ${one(b)}`;
+}
