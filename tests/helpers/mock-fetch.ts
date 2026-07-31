@@ -13,8 +13,14 @@ export interface MockRoute {
   match: string;
   status?: number;
   body?: string;
+  /**
+   * Make `fetch` REJECT rather than resolve, the way a browser does when a
+   * rate-limited response carries no CORS headers — the status is then
+   * unreadable, so a status-based retry can never see it.
+   */
+  reject?: string;
   /** Per-call bodies/statuses, consumed in order — for retry assertions. */
-  sequence?: Array<{ status?: number; body?: string }>;
+  sequence?: Array<{ status?: number; body?: string; reject?: string }>;
 }
 
 export interface MockFetch {
@@ -43,13 +49,16 @@ export function installMockFetch(routes: MockRoute[]): MockFetch {
 
     let status = route.status ?? 200;
     let body = route.body ?? "";
+    let reject = route.reject;
     if (route.sequence?.length) {
       const i = cursors.get(route) ?? 0;
       const step = route.sequence[Math.min(i, route.sequence.length - 1)];
       cursors.set(route, i + 1);
       status = step.status ?? 200;
       body = step.body ?? "";
+      reject = step.reject;
     }
+    if (reject) throw new TypeError(reject);
     return new Response(body, { status });
   }) as typeof fetch;
 

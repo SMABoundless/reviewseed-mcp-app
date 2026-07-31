@@ -193,6 +193,22 @@ test("assemble_query in framework mode with no key lists all ten frameworks plus
   assert.ok(r.frameworks.PICO.buckets.length === 4);
 });
 
+test("REGRESSION: a fetch that REJECTS (no readable status) is still retried once", async () => {
+  // The browser's version of a rate limit: NCBI's 429 has no CORS headers, so
+  // fetch rejects and the status-based retry can never see it. Verified live on
+  // 2026-07-31 as a bare "Failed to fetch" during a burst of calls.
+  mock = installMockFetch([
+    { match: "esearch.fcgi", sequence: [
+      { reject: "Failed to fetch" },
+      { body: esearchJson(["111"], 1) },
+    ] },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111", title: "Recovered" }]) },
+  ]);
+  const r = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
+  assert.equal(r.articles.length, 1, "the retry should have recovered the search");
+  assert.equal(mock.callsMatching("esearch.fcgi").length, 2, "exactly one retry, not a loop");
+});
+
 // ── Recall validation ───────────────────────────────────────────────────────
 
 test("validate_recall reports which seeds the query finds and which it misses", async () => {

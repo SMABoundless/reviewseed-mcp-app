@@ -6,7 +6,7 @@ npm run test:live     # hits the real APIs — run before releases / when upstre
 npm run snapshot      # regenerate the generated fixtures after changing shared config/parsers
 ```
 
-`npm test` typechecks, then runs the unit + integration suites (184 tests, ~1.7s, no network).
+`npm test` typechecks, then runs the unit + integration suites (185 tests, ~1.7s, no network).
 
 ## Layout
 
@@ -64,7 +64,9 @@ held to it.
   is its implicit default and its render layer compensates). The parser parity check
   compares the fields carrying parsed content and *reports* the shape difference.
 - The MeSH vocabulary fetchers were the last big un-checked shared surface; `vocab-inputs.json`
-  closed that on 2026-07-29. Still unchecked: `ncbiFetch`'s 429 retry behavior.
+  closed that on 2026-07-29. `ncbiFetch`'s retry policy was aligned on 2026-07-31 (both repos
+  now retry a REJECTED fetch as well as a readable 429) but is still asserted separately in
+  each repo rather than from a shared fixture — the failure mode differs by runtime.
 - Recall validation shares only `idClause`/`restrictToIds` (fixtures under `idClauseCases`).
   The orchestration around them is per-surface by design, like `pubmedSearch`'s already is.
 - Not parity-checked on purpose: `pubmedSearch`'s orchestration. The website's takes

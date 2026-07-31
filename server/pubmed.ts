@@ -16,7 +16,21 @@ const limit = createLimiter();
 async function ncbiFetch(url: string, attempt = 0): Promise<Response> {
   await limit();
   const sep = url.includes("?") ? "&" : "?";
-  const r = await fetch(url + sep + NCBI_TOOL_PARAMS);
+  let r: Response;
+  try {
+    r = await fetch(url + sep + NCBI_TOOL_PARAMS);
+  } catch (err) {
+    // A dropped connection or DNS blip presents as a thrown fetch with no
+    // status, so the 429 branch below can't see it. Kept in step with the
+    // website, where this matters more sharply: a rate-limited NCBI response
+    // carries no CORS headers, so the browser rejects the fetch outright and
+    // the status is unreadable. Same one-retry policy either way.
+    if (attempt < 1) {
+      await new Promise(res => setTimeout(res, 600));
+      return ncbiFetch(url, attempt + 1);
+    }
+    throw err;
+  }
   if (r.status === 429 && attempt < 1) {
     await new Promise(res => setTimeout(res, 600));
     return ncbiFetch(url, attempt + 1);
