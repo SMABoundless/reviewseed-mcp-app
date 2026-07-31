@@ -6,7 +6,7 @@ npm run test:live     # hits the real APIs — run before releases / when upstre
 npm run snapshot      # regenerate the generated fixtures after changing shared config/parsers
 ```
 
-`npm test` typechecks, then runs the unit + integration suites (198 tests, ~1.7s, no network).
+`npm test` typechecks, then runs the unit + integration suites (209 tests, ~1.7s, no network).
 
 ## Layout
 
@@ -18,6 +18,7 @@ npm run snapshot      # regenerate the generated fixtures after changing shared 
 | `unit/shared-surface.test.ts` | **Cross-repo** — field lists + framework config snapshot | none |
 | `unit/parser-parity.test.ts` | **Cross-repo** — upstream-response parsers | none |
 | `unit/protocol.test.ts` | **Cross-repo** — the Search Protocol object (reporting foundation) | none |
+| `unit/term-yield.test.ts` | **Cross-repo** — the term-yield analysis over a protocol object | none |
 | `unit/vocab-parity.test.ts` | **Cross-repo** — MeSH vocabulary fetchers + the slow-lookup rule | none |
 | `unit/translation-parity.test.ts` | **Cross-repo** — emit-only vendor syntax (Ovid, Embase.com, Scopus, WoS, EBSCO, ProQuest, Cochrane) | none |
 | `unit/match.test.ts` | `matchedVia` word-boundary matching, regex escaping, immutability | none |
@@ -47,6 +48,7 @@ Different kinds of shared surface need different fixture shapes:
 | `parser-inputs.json` + `parser-expected.json` | canned upstream bytes → expected `Article` | **Parsers.** Feeding byte-identical payloads to both is the only way to separate real divergence from an upstream difference. |
 | `vocab-inputs.json` + `vocab-expected.json` | canned NLM payloads → expected `VocabRow[]` / details | **Fetchers.** Same reasoning as the parsers: these functions fetch, so byte-identical canned payloads are the only way to tell divergence from an upstream difference. Routes match on a URL substring; the three SPARQL uses are discriminated by text inside the encoded query. |
 | `translation-parity.json` | input → expected string | **Behavior, hand-pinned.** These strings are pasted into platforms ReviewSeed cannot execute, so a human must pin the vendor syntax; a generated snapshot would ratify a typo forever. The roster itself lives in `shared-surface.json` (data), so the two apps can't offer different menus. |
+| `term-yield-parity.json` | protocol → expected object | **Behavior.** Pure analysis, so the fixtures are exact objects — *including the wording of the balance note*, which reaches the user in a citable report. A test also asserts that wording stays non-prescriptive. |
 | `protocol-parity.json` | input → expected object | **Behavior.** `buildSearchProtocol` is the seam every report reads, so the fixtures pin its decisions (absent-vs-empty selection maps, per-source `latestTotal`, seed-record dedup order) rather than letting either implementation define them. Compared as canonically-serialized JSON: key order may differ, array order may not. |
 
 `shared-surface.json`, `parser-expected.json` and `vocab-expected.json` are **generated** by `npm run snapshot`. Their guard tests fail with "stale"

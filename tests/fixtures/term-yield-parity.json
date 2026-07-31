@@ -1,0 +1,163 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for the term-yield analysis (§3.5).",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: buildTermYield in server/protocol.ts (tests/unit/term-yield.test.ts)",
+    "  - Website: index.html's page-global buildTermYield (verify-parity.mjs)",
+    "",
+    "BEHAVIOR fixture, hand-written. Each case pins a judgement the analysis makes,",
+    "and the wording of those judgements is part of the contract because it reaches",
+    "the user in a citable report:",
+    "  - ordering is seedCount DESC then label ASC, so two repos agree and reruns are stable",
+    "  - a term with 0 seeds is 'uncorroborated', NOT wrong: it came from the",
+    "    thesaurus or by hand on purpose",
+    "  - a term on exactly 1 seed is 'fragile' — real, but thinly evidenced",
+    "  - a seed contributing nothing is reported ('barren'), because it may be indexed",
+    "    differently, which is a record the query will struggle to retrieve",
+    "  - the balance note names the trade-off (headings = precision, keywords = recall)",
+    "    without calling either arrangement an error",
+    "",
+    "`protocol` is a full SearchProtocol object, the same shape buildSearchProtocol",
+    "emits — see protocol-parity.json."
+  ],
+  "version": 1,
+  "cases": [
+    {
+      "name": "mixed pool: frequency ordering, fragile, uncorroborated, barren seed",
+      "protocol": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-31T00:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "mcp-app" },
+        "source": { "key": "pubmed", "label": "PubMed", "platform": "NCBI E-utilities (unauthenticated)", "api": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils" },
+        "query": { "mode": "boolean", "string": "x", "booleanOpts": { "kwOp": "OR", "vocabOp": "OR", "joinOp": "AND" }, "framework": null },
+        "vocabularies": [{ "key": "mesh", "label": "NLM Medical Subject Headings (MeSH)", "edition": null }],
+        "terms": [
+          { "label": "burnout", "kind": "keyword", "pool": "keywords", "field": "tiab", "selected": true, "from": "seed", "seeds": ["1", "2", "3"] },
+          { "label": "mindfulness", "kind": "keyword", "pool": "keywords", "field": "tiab", "selected": true, "from": "seed", "seeds": ["1"] },
+          { "label": "resilience", "kind": "keyword", "pool": "keywords", "field": "tiab", "selected": false, "from": "synonym", "seeds": [] },
+          { "label": "Burnout, Professional", "kind": "mesh", "pool": "mesh", "field": null, "selected": true, "from": "seed", "seeds": ["1", "2"] },
+          { "label": "Mindfulness", "kind": "mesh", "pool": "mesh", "field": null, "selected": true, "from": "vocab", "seeds": [] }
+        ],
+        "filters": { "summary": [] },
+        "searchLog": [],
+        "seedRecords": ["1", "2", "3", "4"],
+        "counts": { "keywords": 3, "mesh": 2, "eric": 0, "queries": 0, "terms": 5, "selected": 4, "seedRecords": 4, "searchesRun": 0, "latestTotal": null }
+      },
+      "expected": {
+        "terms": [
+          { "label": "burnout", "kind": "keyword", "pool": "keywords", "selected": true, "from": "seed", "seedCount": 3, "seeds": ["1", "2", "3"] },
+          { "label": "Burnout, Professional", "kind": "mesh", "pool": "mesh", "selected": true, "from": "seed", "seedCount": 2, "seeds": ["1", "2"] },
+          { "label": "mindfulness", "kind": "keyword", "pool": "keywords", "selected": true, "from": "seed", "seedCount": 1, "seeds": ["1"] },
+          { "label": "Mindfulness", "kind": "mesh", "pool": "mesh", "selected": true, "from": "vocab", "seedCount": 0, "seeds": [] },
+          { "label": "resilience", "kind": "keyword", "pool": "keywords", "selected": false, "from": "synonym", "seedCount": 0, "seeds": [] }
+        ],
+        "fragile": ["mindfulness"],
+        "uncorroborated": ["Mindfulness", "resilience"],
+        "seeds": [
+          { "id": "1", "termCount": 3, "terms": ["burnout", "Burnout, Professional", "mindfulness"] },
+          { "id": "2", "termCount": 2, "terms": ["burnout", "Burnout, Professional"] },
+          { "id": "3", "termCount": 1, "terms": ["burnout"] },
+          { "id": "4", "termCount": 0, "terms": [] }
+        ],
+        "barrenSeeds": ["4"],
+        "balance": {
+          "keywords": 3, "vocabulary": 2, "queries": 0, "vocabularyShare": 0.4,
+          "note": "Both controlled vocabulary and keywords are represented: headings for precision, keywords for records that aren't indexed yet."
+        },
+        "coverage": { "pooled": 5, "selected": 4, "selectedShare": 0.8 }
+      }
+    },
+    {
+      "name": "keywords only: the note names the missing precision, not an error",
+      "protocol": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-31T00:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "website" },
+        "source": { "key": "eric", "label": "ERIC", "platform": "ERIC public API (api.ies.ed.gov)", "api": "https://api.ies.ed.gov/eric/" },
+        "query": { "mode": "boolean", "string": "x", "booleanOpts": { "kwOp": "OR", "vocabOp": "OR", "joinOp": "AND" }, "framework": null },
+        "vocabularies": [],
+        "terms": [
+          { "label": "tutoring", "kind": "keyword", "pool": "keywords", "field": "tiab", "selected": true, "from": "manual", "seeds": [] }
+        ],
+        "filters": { "summary": [] },
+        "searchLog": [],
+        "seedRecords": [],
+        "counts": { "keywords": 1, "mesh": 0, "eric": 0, "queries": 0, "terms": 1, "selected": 1, "seedRecords": 0, "searchesRun": 0, "latestTotal": null }
+      },
+      "expected": {
+        "terms": [
+          { "label": "tutoring", "kind": "keyword", "pool": "keywords", "selected": true, "from": "manual", "seedCount": 0, "seeds": [] }
+        ],
+        "fragile": [],
+        "uncorroborated": ["tutoring"],
+        "seeds": [],
+        "barrenSeeds": [],
+        "balance": {
+          "keywords": 1, "vocabulary": 0, "queries": 0, "vocabularyShare": 0,
+          "note": "Keywords only. Good recall, including records not yet indexed, but no controlled-vocabulary precision — and nothing that survives a change in an author's phrasing."
+        },
+        "coverage": { "pooled": 1, "selected": 1, "selectedShare": 1 }
+      }
+    },
+    {
+      "name": "vocabulary only, with an advanced snippet excluded from the balance ratio",
+      "protocol": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-31T00:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "website" },
+        "source": { "key": "pubmed", "label": "PubMed", "platform": "NCBI E-utilities (unauthenticated)", "api": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils" },
+        "query": { "mode": "boolean", "string": "x", "booleanOpts": { "kwOp": "OR", "vocabOp": "OR", "joinOp": "AND" }, "framework": null },
+        "vocabularies": [{ "key": "mesh", "label": "NLM Medical Subject Headings (MeSH)", "edition": null }],
+        "terms": [
+          { "label": "Asthma", "kind": "mesh", "pool": "mesh", "field": null, "selected": true, "from": "seed", "seeds": ["9"] },
+          { "label": "(\"Asthma\"[MeSH Terms])", "kind": "query", "pool": "queries", "field": null, "selected": false, "from": "advanced", "seeds": [] }
+        ],
+        "filters": { "summary": [] },
+        "searchLog": [],
+        "seedRecords": ["9"],
+        "counts": { "keywords": 0, "mesh": 1, "eric": 0, "queries": 1, "terms": 2, "selected": 1, "seedRecords": 1, "searchesRun": 0, "latestTotal": null }
+      },
+      "expected": {
+        "terms": [
+          { "label": "Asthma", "kind": "mesh", "pool": "mesh", "selected": true, "from": "seed", "seedCount": 1, "seeds": ["9"] },
+          { "label": "(\"Asthma\"[MeSH Terms])", "kind": "query", "pool": "queries", "selected": false, "from": "advanced", "seedCount": 0, "seeds": [] }
+        ],
+        "fragile": ["Asthma"],
+        "uncorroborated": ["(\"Asthma\"[MeSH Terms])"],
+        "seeds": [{ "id": "9", "termCount": 1, "terms": ["Asthma"] }],
+        "barrenSeeds": [],
+        "balance": {
+          "keywords": 0, "vocabulary": 1, "queries": 1, "vocabularyShare": 1,
+          "note": "Controlled vocabulary only. Precise, but it misses anything not yet indexed — recent records especially — and any phrasing the indexers didn't use."
+        },
+        "coverage": { "pooled": 2, "selected": 1, "selectedShare": 0.5 }
+      }
+    },
+    {
+      "name": "empty pool: no terms, no judgements, no division by zero",
+      "protocol": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-07-31T00:00:00.000Z",
+        "tool": { "name": "ReviewSeed", "version": "parity", "surface": "mcp-app" },
+        "source": { "key": "trials", "label": "ClinicalTrials.gov", "platform": "ClinicalTrials.gov API v2", "api": "https://clinicaltrials.gov/api/v2/" },
+        "query": { "mode": "boolean", "string": "", "booleanOpts": { "kwOp": "OR", "vocabOp": "OR", "joinOp": "AND" }, "framework": null },
+        "vocabularies": [],
+        "terms": [],
+        "filters": { "summary": [] },
+        "searchLog": [],
+        "seedRecords": [],
+        "counts": { "keywords": 0, "mesh": 0, "eric": 0, "queries": 0, "terms": 0, "selected": 0, "seedRecords": 0, "searchesRun": 0, "latestTotal": null }
+      },
+      "expected": {
+        "terms": [],
+        "fragile": [],
+        "uncorroborated": [],
+        "seeds": [],
+        "barrenSeeds": [],
+        "balance": { "keywords": 0, "vocabulary": 0, "queries": 0, "vocabularyShare": null, "note": "No terms pooled yet." },
+        "coverage": { "pooled": 0, "selected": 0, "selectedShare": null }
+      }
+    }
+  ]
+}

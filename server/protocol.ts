@@ -213,3 +213,124 @@ export function buildSearchProtocol(input: ProtocolInput): SearchProtocol {
     },
   };
 }
+
+// ── Term yield analysis (docs/REPORTS-ROADMAP.md §3.5) ────────────────────────
+// Pure computation over a SearchProtocol — no network, no clock. Answers "which
+// terms actually came from my seed records, and how often?", which is only
+// answerable because provenance is captured at add time (§2.1).
+//
+// SHARED LOGIC. The website has a behavioral twin (index.html's page-global
+// buildTermYield) and both run tests/fixtures/term-yield-parity.json.
+//
+// Deliberately withholds judgement in two places:
+//   - A term with no seed records isn't wrong. It came from the thesaurus or by
+//     hand on purpose. It's reported as "not corroborated by a seed", not as bad.
+//   - A seed that contributed nothing may be off-topic, or may simply be indexed
+//     differently — and the latter is the more interesting case, because it's a
+//     record your query will struggle to retrieve. Both are reported, neither
+//     is diagnosed.
+export interface YieldTerm {
+  label: string;
+  kind: TermKind;
+  pool: PoolKey;
+  selected: boolean;
+  from: TermOrigin | null;
+  seedCount: number;
+  seeds: string[];
+}
+
+export interface SeedContribution {
+  id: string;
+  termCount: number;
+  terms: string[];
+}
+
+export interface TermYield {
+  /** Every pooled term, most-corroborated first, then alphabetical. */
+  terms: YieldTerm[];
+  /** Resting on exactly one seed record — real, but thinly evidenced. */
+  fragile: string[];
+  /** No seed record carries these: added from the thesaurus, a synonym, or by hand. */
+  uncorroborated: string[];
+  /** Seed records ordered by how much vocabulary they contributed, richest first. */
+  seeds: SeedContribution[];
+  /** Seeds that contributed nothing to the pool at all. */
+  barrenSeeds: string[];
+  balance: {
+    keywords: number;
+    vocabulary: number;   // MeSH + ERIC headings
+    queries: number;
+    /** Share of terms that are controlled vocabulary, 0-1, or null with no terms. */
+    vocabularyShare: number | null;
+    note: string;
+  };
+  coverage: {
+    pooled: number;
+    selected: number;
+    /** Share of the pool actually in the string, 0-1, or null with no terms. */
+    selectedShare: number | null;
+  };
+}
+
+const share = (n: number, d: number): number | null => (d > 0 ? Number((n / d).toFixed(3)) : null);
+
+export function buildTermYield(p: SearchProtocol): TermYield {
+  const terms: YieldTerm[] = p.terms.map(t => ({
+    label: t.label,
+    kind: t.kind,
+    pool: t.pool,
+    selected: t.selected,
+    from: t.from,
+    seedCount: t.seeds.length,
+    seeds: [...t.seeds],
+  }));
+  // Most-corroborated first; alphabetical within a tie so the order is stable
+  // across runs and comparable between the two repos.
+  terms.sort((a, b) => b.seedCount - a.seedCount || a.label.localeCompare(b.label));
+
+  const fragile = terms.filter(t => t.seedCount === 1).map(t => t.label);
+  const uncorroborated = terms.filter(t => t.seedCount === 0).map(t => t.label);
+
+  // Invert the term -> seeds mapping. Every seed in the protocol appears, even
+  // one that contributed nothing, because a barren seed is itself a finding.
+  const bySeed = new Map<string, string[]>(p.seedRecords.map(id => [id, []]));
+  for (const t of terms) {
+    for (const id of t.seeds) {
+      if (!bySeed.has(id)) bySeed.set(id, []);
+      bySeed.get(id)!.push(t.label);
+    }
+  }
+  const seeds: SeedContribution[] = [...bySeed.entries()]
+    .map(([id, labels]) => ({ id, termCount: labels.length, terms: labels }))
+    .sort((a, b) => b.termCount - a.termCount || a.id.localeCompare(b.id));
+
+  const keywords = terms.filter(t => t.kind === "keyword").length;
+  const vocabulary = terms.filter(t => t.kind === "mesh" || t.kind === "eric").length;
+  const queries = terms.filter(t => t.kind === "query").length;
+  const vocabShare = share(vocabulary, keywords + vocabulary);
+
+  // Controlled vocabulary buys precision; keywords buy recall, including records
+  // not yet indexed. A pool that is all one or the other is worth noticing — but
+  // it's a trade-off to make deliberately, not an error to correct.
+  const note = keywords + vocabulary === 0
+    ? "No terms pooled yet."
+    : vocabulary === 0
+      ? "Keywords only. Good recall, including records not yet indexed, but no controlled-vocabulary precision — and nothing that survives a change in an author's phrasing."
+      : keywords === 0
+        ? "Controlled vocabulary only. Precise, but it misses anything not yet indexed — recent records especially — and any phrasing the indexers didn't use."
+        : "Both controlled vocabulary and keywords are represented: headings for precision, keywords for records that aren't indexed yet.";
+
+  return {
+    terms,
+    fragile,
+    uncorroborated,
+    seeds,
+    barrenSeeds: seeds.filter(s => s.termCount === 0).map(s => s.id),
+    balance: { keywords, vocabulary, queries, vocabularyShare: vocabShare, note },
+    coverage: {
+      pooled: terms.length,
+      selected: terms.filter(t => t.selected).length,
+      selectedShare: share(terms.filter(t => t.selected).length, terms.length),
+    },
+  };
+}
