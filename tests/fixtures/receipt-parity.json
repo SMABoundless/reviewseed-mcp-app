@@ -1,0 +1,511 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for the reproducibility receipt (§3.13).",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: server/receipt.ts (tests/unit/receipt-parity.test.ts)",
+    "  - Website: index.html page globals (verify-parity.mjs)",
+    "",
+    "The FINGERPRINT values below are pinned deliberately. They are the interface",
+    "between a receipt saved today and a re-run months later, and between the two",
+    "repos — if either changes its digest, receipts already written down in someone's",
+    "methods section stop matching. Changing the algorithm is a breaking change and",
+    "these numbers are what make that visible.",
+    "",
+    "The load-bearing DIFF case is `refuses to compare two different searches`. Two",
+    "different searches returning different totals is not a finding, and reporting it",
+    "as 'N new records since July' would be the most plausible-looking wrong answer",
+    "this feature could produce.",
+    "",
+    "On the pinned values: the empty / 'a' / 'b' cases are the independently",
+    "documented FNV-1a 32-bit results, so they verify the ALGORITHM rather than",
+    "ratifying whatever this code happens to emit. The remaining values were then",
+    "computed from that verified implementation."
+  ],
+  "version": 1,
+  "fingerprintCases": [
+    {
+      "name": "stable for a fixed basis",
+      "basis": "[\"pubmed\",\"\\\"asthma\\\"[tiab]\",\"boolean\",\"\",[],[]]",
+      "expected": "f8efc464"
+    },
+    {
+      "name": "empty basis still digests",
+      "basis": "",
+      "expected": "811c9dc5"
+    },
+    {
+      "name": "single character",
+      "basis": "a",
+      "expected": "e40c292c"
+    },
+    {
+      "name": "differs on one character",
+      "basis": "b",
+      "expected": "e70c2de5"
+    }
+  ],
+  "receiptCases": [
+    {
+      "name": "boolean search with limits and a live search log",
+      "protocol": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-08-01T12:00:00.000Z",
+        "tool": {
+          "name": "ReviewSeed",
+          "version": "parity",
+          "surface": "website"
+        },
+        "source": {
+          "key": "pubmed",
+          "label": "PubMed",
+          "platform": "NCBI E-utilities (unauthenticated)",
+          "api": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+        },
+        "query": {
+          "mode": "boolean",
+          "string": "\"asthma\"[tiab]",
+          "booleanOpts": {
+            "kwOp": "OR",
+            "vocabOp": "OR",
+            "joinOp": "AND"
+          },
+          "framework": null
+        },
+        "vocabularies": [
+          {
+            "key": "mesh",
+            "label": "NLM Medical Subject Headings (MeSH)",
+            "edition": null
+          }
+        ],
+        "terms": [],
+        "filters": {
+          "summary": [
+            "Language: English"
+          ]
+        },
+        "searchLog": [
+          {
+            "at": "2026-07-01T00:00:00.000Z",
+            "source": "pubmed",
+            "query": "\"asthma\"[tiab]",
+            "total": 100
+          }
+        ],
+        "seedRecords": [],
+        "counts": {
+          "keywords": 0,
+          "mesh": 1,
+          "eric": 0,
+          "queries": 0,
+          "terms": 0,
+          "selected": 0,
+          "seedRecords": 0,
+          "searchesRun": 1,
+          "latestTotal": 100
+        }
+      },
+      "run": {},
+      "expected": {
+        "schema": "reviewseed.receipt/1",
+        "fingerprint": "7bbc2f45",
+        "source": "pubmed",
+        "sourceLabel": "PubMed",
+        "platform": "NCBI E-utilities (unauthenticated)",
+        "query": "\"asthma\"[tiab]",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [
+          "Language: English"
+        ],
+        "vocabularies": [
+          {
+            "key": "mesh",
+            "edition": null
+          }
+        ],
+        "tool": {
+          "name": "ReviewSeed",
+          "version": "parity",
+          "surface": "website"
+        },
+        "searchedAt": "2026-07-01T00:00:00.000Z",
+        "total": 100,
+        "sampledIds": [],
+        "sampleNote": "No ids recorded, so only the total can be compared."
+      }
+    },
+    {
+      "name": "an explicit run overrides the log, and ids make the sample note concrete",
+      "protocol": {
+        "schema": "reviewseed.search-protocol/1",
+        "generatedAt": "2026-08-01T12:00:00.000Z",
+        "tool": {
+          "name": "ReviewSeed",
+          "version": "parity",
+          "surface": "mcp-app"
+        },
+        "source": {
+          "key": "eric",
+          "label": "ERIC",
+          "platform": "ERIC public API (api.ies.ed.gov)",
+          "api": "https://api.ies.ed.gov/eric/"
+        },
+        "query": {
+          "mode": "framework",
+          "string": "subject:\"Distance Education\"",
+          "booleanOpts": null,
+          "framework": {
+            "key": "PCC",
+            "buckets": {}
+          }
+        },
+        "vocabularies": [
+          {
+            "key": "eric",
+            "label": "ERIC Thesaurus",
+            "edition": "2025"
+          }
+        ],
+        "terms": [],
+        "filters": {
+          "summary": []
+        },
+        "searchLog": [
+          {
+            "at": "2026-06-01T00:00:00.000Z",
+            "source": "eric",
+            "query": "x",
+            "total": 7
+          }
+        ],
+        "seedRecords": [],
+        "counts": {
+          "keywords": 0,
+          "mesh": 0,
+          "eric": 1,
+          "queries": 0,
+          "terms": 0,
+          "selected": 0,
+          "seedRecords": 0,
+          "searchesRun": 1,
+          "latestTotal": 7
+        }
+      },
+      "run": {
+        "searchedAt": "2026-08-01T09:00:00.000Z",
+        "total": 42,
+        "sampledIds": [
+          "EJ1",
+          "EJ2"
+        ]
+      },
+      "expected": {
+        "schema": "reviewseed.receipt/1",
+        "fingerprint": "35db555f",
+        "source": "eric",
+        "sourceLabel": "ERIC",
+        "platform": "ERIC public API (api.ies.ed.gov)",
+        "query": "subject:\"Distance Education\"",
+        "mode": "framework",
+        "framework": "PCC",
+        "limits": [],
+        "vocabularies": [
+          {
+            "key": "eric",
+            "edition": "2025"
+          }
+        ],
+        "tool": {
+          "name": "ReviewSeed",
+          "version": "parity",
+          "surface": "mcp-app"
+        },
+        "searchedAt": "2026-08-01T09:00:00.000Z",
+        "total": 42,
+        "sampledIds": [
+          "EJ1",
+          "EJ2"
+        ],
+        "sampleNote": "2 ids sampled from the top of the result set — not the full set, so a record can appear or vanish from the sample without entering or leaving the results."
+      }
+    }
+  ],
+  "diffCases": [
+    {
+      "name": "same strategy, more records — the number to screen for an update",
+      "before": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": "2026-07-01T00:00:00.000Z",
+        "total": 100,
+        "sampledIds": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "after": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": "2026-08-01T00:00:00.000Z",
+        "total": 112,
+        "sampledIds": [
+          "9",
+          "1",
+          "2"
+        ]
+      },
+      "expected": {
+        "comparable": true,
+        "incomparableReason": null,
+        "changed": [],
+        "totalBefore": 100,
+        "totalAfter": 112,
+        "totalDelta": 12,
+        "newIds": [
+          "9"
+        ],
+        "goneIds": [
+          "3"
+        ],
+        "elapsed": {
+          "from": "2026-07-01T00:00:00.000Z",
+          "to": "2026-08-01T00:00:00.000Z"
+        },
+        "interpretationMatches": "12 more records"
+      }
+    },
+    {
+      "name": "refuses to compare two different searches",
+      "before": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": "2026-07-01T00:00:00.000Z",
+        "total": 100,
+        "sampledIds": [
+          "1"
+        ]
+      },
+      "after": {
+        "fingerprint": "bbbb2222",
+        "source": "pubmed",
+        "query": "q OR r",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": "2026-08-01T00:00:00.000Z",
+        "total": 400,
+        "sampledIds": [
+          "9"
+        ]
+      },
+      "expected": {
+        "comparable": false,
+        "incomparableReasonMatches": "strategy changed (query string)",
+        "changed": [
+          "query"
+        ],
+        "totalBefore": 100,
+        "totalAfter": 400,
+        "totalDelta": 300,
+        "newIds": [],
+        "goneIds": [],
+        "elapsed": {
+          "from": "2026-07-01T00:00:00.000Z",
+          "to": "2026-08-01T00:00:00.000Z"
+        },
+        "interpretationMatches": "says nothing about the literature"
+      }
+    },
+    {
+      "name": "a changed limit is a changed search, even with the same query",
+      "before": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": null,
+        "total": 10,
+        "sampledIds": []
+      },
+      "after": {
+        "fingerprint": "cccc3333",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [
+          "Language: English"
+        ],
+        "vocabularies": [],
+        "searchedAt": null,
+        "total": 8,
+        "sampledIds": []
+      },
+      "expected": {
+        "comparable": false,
+        "incomparableReasonMatches": "limits applied",
+        "changed": [
+          "limits"
+        ],
+        "totalBefore": 10,
+        "totalAfter": 8,
+        "totalDelta": -2,
+        "newIds": [],
+        "goneIds": [],
+        "elapsed": {
+          "from": null,
+          "to": null
+        },
+        "interpretationMatches": "different searches"
+      }
+    },
+    {
+      "name": "same strategy, fewer records — records do leave",
+      "before": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": null,
+        "total": 100,
+        "sampledIds": []
+      },
+      "after": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": null,
+        "total": 97,
+        "sampledIds": []
+      },
+      "expected": {
+        "comparable": true,
+        "incomparableReason": null,
+        "changed": [],
+        "totalBefore": 100,
+        "totalAfter": 97,
+        "totalDelta": -3,
+        "newIds": [],
+        "goneIds": [],
+        "elapsed": {
+          "from": null,
+          "to": null
+        },
+        "interpretationMatches": "retractions, de-duplication"
+      }
+    },
+    {
+      "name": "same strategy, same total — a swap can still hide inside it",
+      "before": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": null,
+        "total": 50,
+        "sampledIds": []
+      },
+      "after": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": null,
+        "total": 50,
+        "sampledIds": []
+      },
+      "expected": {
+        "comparable": true,
+        "incomparableReason": null,
+        "changed": [],
+        "totalBefore": 50,
+        "totalAfter": 50,
+        "totalDelta": 0,
+        "newIds": [],
+        "goneIds": [],
+        "elapsed": {
+          "from": null,
+          "to": null
+        },
+        "interpretationMatches": "hide a swap"
+      }
+    },
+    {
+      "name": "no total recorded means nothing to compare, and it says so",
+      "before": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": null,
+        "total": null,
+        "sampledIds": []
+      },
+      "after": {
+        "fingerprint": "aaaa1111",
+        "source": "pubmed",
+        "query": "q",
+        "mode": "boolean",
+        "framework": null,
+        "limits": [],
+        "vocabularies": [],
+        "searchedAt": null,
+        "total": 5,
+        "sampledIds": []
+      },
+      "expected": {
+        "comparable": true,
+        "incomparableReason": null,
+        "changed": [],
+        "totalBefore": null,
+        "totalAfter": 5,
+        "totalDelta": null,
+        "newIds": [],
+        "goneIds": [],
+        "elapsed": {
+          "from": null,
+          "to": null
+        },
+        "interpretationMatches": "nothing to compare"
+      }
+    }
+  ]
+}

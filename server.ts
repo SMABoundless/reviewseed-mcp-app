@@ -20,6 +20,7 @@ import { isSlowLookup, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } f
 import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import { lintQuery } from "./server/lint.js";
 import { applyHedge, getHedge, HEDGE_CAVEAT, HEDGES, hedgesFor } from "./server/hedges.js";
+import { buildReceipt, diffReceipts } from "./server/receipt.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -367,6 +368,38 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Reproducibility receipt / re-run diff ──────────────────────────────────
+  server.tool(
+    "reviewseed_receipt",
+    "Make a reproducibility receipt for a search strategy, or diff a saved receipt against a fresh one to see what " +
+    "changed in the literature since. A receipt fingerprints the REPRODUCIBLE parts — database, query as sent, limits, " +
+    "vocabulary editions — and records the total and a sample of ids at that moment; that fingerprint is what a review " +
+    "update cites. The fingerprint is a change DETECTOR, not a signature: it proves two runs describe the same search, " +
+    "not that nobody edited the receipt. When diffing, respect `comparable`: if it is false the strategy itself " +
+    "changed, and the count difference says nothing about the literature — never report it as 'N new records since'. " +
+    "Id movement is reported only within the sampled sets, which are not the full result set.",
+    {
+      protocol: z.record(z.string(), z.unknown()).optional()
+        .describe("A reviewseed.search-protocol/1 object to build a receipt from"),
+      run: z.object({
+        searchedAt: z.string().nullable().optional(),
+        total: z.number().nullable().optional(),
+        sampledIds: z.array(z.string()).optional(),
+      }).optional().describe("Observed results to stamp onto the receipt; defaults to the protocol's own search log"),
+      diff: z.object({
+        before: z.record(z.string(), z.unknown()),
+        after: z.record(z.string(), z.unknown()),
+      }).optional().describe("Two reviewseed.receipt/1 objects to compare"),
+    },
+    async ({ protocol, run, diff }) => {
+      try {
+        if (diff) return textResult(diffReceipts(diff.before as never, diff.after as never));
+        if (!protocol) return errorResult(new Error("Pass either `protocol` to build a receipt, or `diff` with two receipts to compare."));
+        return textResult(buildReceipt(protocol as never, run ?? {}));
       } catch (e) { return errorResult(e); }
     },
   );

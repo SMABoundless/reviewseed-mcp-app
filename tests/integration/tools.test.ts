@@ -34,6 +34,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_lint_query",
     "reviewseed_lookup",
     "reviewseed_open",
+    "reviewseed_receipt",
     "reviewseed_search",
     "reviewseed_translate_query",
     "reviewseed_validate_recall",
@@ -49,7 +50,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -210,6 +211,65 @@ test("REGRESSION: a fetch that REJECTS (no readable status) is still retried onc
   const r = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
   assert.equal(r.articles.length, 1, "the retry should have recovered the search");
   assert.equal(mock.callsMatching("esearch.fcgi").length, 2, "exactly one retry, not a loop");
+});
+
+// ── Reproducibility receipt ─────────────────────────────────────────────────
+
+const RECEIPT_PROTOCOL = {
+  schema: "reviewseed.search-protocol/1",
+  generatedAt: "2026-08-01T12:00:00.000Z",
+  tool: { name: "ReviewSeed", version: "test", surface: "mcp-app" },
+  source: { key: "pubmed", label: "PubMed", platform: "NCBI E-utilities (unauthenticated)", api: "x" },
+  query: { mode: "boolean", string: '"asthma"[tiab]', booleanOpts: {}, framework: null },
+  vocabularies: [], terms: [], filters: { summary: [] },
+  searchLog: [{ at: "2026-07-01T00:00:00.000Z", source: "pubmed", query: '"asthma"[tiab]', total: 100 }],
+  seedRecords: [], counts: {},
+};
+
+test("receipt fingerprints the strategy and carries the observed total", async () => {
+  const r = payload(await call("reviewseed_receipt", { protocol: RECEIPT_PROTOCOL }));
+  assert.equal(r.schema, "reviewseed.receipt/1");
+  assert.match(r.fingerprint, /^[0-9a-f]{8}$/);
+  assert.equal(r.total, 100);
+  assert.equal(r.searchedAt, "2026-07-01T00:00:00.000Z");
+});
+
+test("receipt fingerprint ignores when it was rendered, so the same strategy matches later", async () => {
+  const a = payload(await call("reviewseed_receipt", { protocol: RECEIPT_PROTOCOL }));
+  const b = payload(await call("reviewseed_receipt", {
+    protocol: { ...RECEIPT_PROTOCOL, generatedAt: "2027-01-01T00:00:00.000Z" },
+    run: { total: 4321, sampledIds: ["7"] },
+  }));
+  assert.equal(a.fingerprint, b.fingerprint);
+});
+
+test("receipt diff reports the delta when the strategy is unchanged", async () => {
+  const before = payload(await call("reviewseed_receipt", { protocol: RECEIPT_PROTOCOL, run: { total: 100, sampledIds: ["1", "2"] } }));
+  const after = payload(await call("reviewseed_receipt", { protocol: RECEIPT_PROTOCOL, run: { total: 118, sampledIds: ["9", "1"] } }));
+  const d = payload(await call("reviewseed_receipt", { diff: { before, after } }));
+  assert.equal(d.comparable, true);
+  assert.equal(d.totalDelta, 18);
+  assert.deepEqual(d.newIds, ["9"]);
+  assert.deepEqual(d.goneIds, ["2"]);
+  assert.match(d.interpretation, /18 more records/);
+});
+
+test("REGRESSION: a diff across two DIFFERENT strategies refuses to read as drift", async () => {
+  const before = payload(await call("reviewseed_receipt", { protocol: RECEIPT_PROTOCOL, run: { total: 100, sampledIds: ["1"] } }));
+  const after = payload(await call("reviewseed_receipt", {
+    protocol: { ...RECEIPT_PROTOCOL, query: { ...RECEIPT_PROTOCOL.query, string: '"asthma"[tiab] OR "wheeze"[tiab]' } },
+    run: { total: 900, sampledIds: ["9"] },
+  }));
+  const d = payload(await call("reviewseed_receipt", { diff: { before, after } }));
+  assert.equal(d.comparable, false, "different queries are not comparable");
+  assert.deepEqual(d.changed, ["query"]);
+  assert.match(d.interpretation, /says nothing about the literature/);
+  assert.deepEqual(d.newIds, [], "id movement between different searches must not be reported");
+});
+
+test("receipt requires either a protocol or a diff", async () => {
+  const r = payload(await call("reviewseed_receipt", {}));
+  assert.match(r.error, /Pass either/);
 });
 
 // ── Methodological filters ──────────────────────────────────────────────────
