@@ -29,6 +29,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_assemble_query",
     "reviewseed_author_search",
     "reviewseed_compare_queries",
+    "reviewseed_crosswalk",
     "reviewseed_evidence_map",
     "reviewseed_export_records",
     "reviewseed_hedges",
@@ -52,7 +53,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt", "reviewseed_export_records", "reviewseed_terminology_drift"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt", "reviewseed_export_records", "reviewseed_terminology_drift", "reviewseed_crosswalk"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -265,6 +266,51 @@ test("compare_queries refuses a single variant, and says how to fix it", async (
     autoFrom: { pool: { keywords: [], mesh: ["Only"], eric: [], queries: [], ericQueries: [], ctQueries: [] } },
   }));
   assert.match(r.error, /at least two variants/);
+});
+
+// ── MeSH-ERIC crosswalk ─────────────────────────────────────────────────────
+
+test("crosswalk finds an exact-label counterpart and rates it strong", async () => {
+  const r = payload(await call("reviewseed_crosswalk", { headings: [{ label: "Distance Education" }] }));
+  const m = r.results[0].matches.find((x: any) => x.descriptor === "Distance Education");
+  assert.ok(m, "ERIC has this descriptor under the same label");
+  assert.equal(m.confidence, "strong");
+  assert.equal(r.thesaurusEdition, "2025");
+});
+
+test("REGRESSION: the Mindfulness/Metacognition fold is never rated strong", async () => {
+  // ERIC has no Mindfulness descriptor; Metacognition lists it as a Use-For,
+  // having absorbed the cognitive-psychology sense. Presenting that as certain
+  // would send an education search badly wrong.
+  const r = payload(await call("reviewseed_crosswalk", { headings: [{ label: "Mindfulness" }] }));
+  const m = r.results[0].matches.find((x: any) => x.descriptor === "Metacognition");
+  assert.ok(m, "the fold should still be surfaced — with its evidence");
+  assert.notEqual(m.confidence, "strong");
+  assert.match(m.evidence, /folds this concept INTO/);
+});
+
+test("crosswalk always carries the no-official-mapping caveat", async () => {
+  const r = payload(await call("reviewseed_crosswalk", { headings: [{ label: "Asthma" }] }));
+  assert.match(r.caveat, /No official MeSH–ERIC mapping exists/);
+  assert.match(r.caveat, /the word can match while the concept does not/);
+});
+
+test("crosswalk reports finding nothing as a real answer", async () => {
+  const r = payload(await call("reviewseed_crosswalk", {
+    headings: [{ label: "Zzzz Nonexistent Heading" }],
+  }));
+  assert.equal(r.results[0].none, true);
+  assert.equal(r.counts.withoutMatches, 1);
+  assert.match(r.summary, /real answer/);
+});
+
+test("crosswalk uses entry terms to widen the search for a counterpart", async () => {
+  const withOut = payload(await call("reviewseed_crosswalk", { headings: [{ label: "Relaxation Therapy" }] }));
+  const withIn = payload(await call("reviewseed_crosswalk", {
+    headings: [{ label: "Relaxation Therapy", entryTerms: ["Relaxation Training"] }],
+  }));
+  assert.ok(withIn.results[0].matches.length > withOut.results[0].matches.length,
+    "an entry term that is itself an ERIC descriptor should surface a candidate");
 });
 
 // ── Terminology drift ───────────────────────────────────────────────────────

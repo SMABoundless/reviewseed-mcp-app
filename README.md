@@ -45,7 +45,8 @@ Claude / Host
             ├─ reviewseed_hedges             → published study-design filters, with citations
             ├─ reviewseed_receipt            → fingerprint a strategy; diff a saved receipt against today
             ├─ reviewseed_export_records     → RIS/BibTeX/CSV for Covidence, Rayyan, Zotero + PRISMA counts
-            └─ reviewseed_terminology_drift   → can a heading even reach the years you're searching?
+            ├─ reviewseed_terminology_drift   → can a heading even reach the years you're searching?
+            └─ reviewseed_crosswalk          → candidate ERIC descriptors for a MeSH heading (never a mapping)
 ```
 
 **Tools exposed:**
@@ -69,6 +70,7 @@ Claude / Host
 | `reviewseed_receipt` | Claude | Fingerprints a strategy for a review update, and diffs a saved receipt against a fresh one — refusing to compare two *different* searches |
 | `reviewseed_export_records` | Claude | RIS / BibTeX / CSV for a screening tool, deduped with the dropped ids listed, plus PRISMA identified counts and the numbers it can't know |
 | `reviewseed_terminology_drift` | Claude | When NLM created each heading, and the earlier heading to use for years before that — a gap in the indexing, not the literature |
+| `reviewseed_crosswalk` | Claude | Candidate ERIC descriptors for MeSH headings, with evidence and tiered confidence. **Candidates, not a mapping** — no official MeSH–ERIC crosswalk exists |
 
 ### Source layout
 
@@ -86,6 +88,8 @@ server/
                         pure, shared between the server tool and the browser UI's live preview
   protocol.ts           buildSearchProtocol: the serializable record every report reads
                         (pool + selections + provenance + search log), pure, injected clock
+  crosswalk.ts          MeSH -> ERIC candidates with tiered confidence. Only a shared label rates
+                        `strong`: ERIC folds Mindfulness into Metacognition and Asthma into Diseases
   variants.ts           the tuning ladder: neighbouring versions of a query, built by the real
                         query builder, with unbuildable rungs reported rather than dropped
   drift.ts              MeSH dateIntroduced/historyNote -> terminology-gap verdicts. The
@@ -100,7 +104,7 @@ server/
                         plus the list of what it deliberately does NOT check
   translate.ts          emit-only vendor syntax for the 7 platforms ReviewSeed can't query —
                         strings a human pastes, never executed here, so the caveat travels with them
-server.ts               registers all 17 tools + the UI resource
+server.ts               registers all 18 tools + the UI resource
 main.ts                 HTTP (Express) / stdio entry point + REST fallback (/api/search, /api/lookup, /api/vocab)
 src/mcp-app.tsx          the React UI (source switcher, 4 input modes, vocab explorer, both builders)
 ```

@@ -1,0 +1,119 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for the MeSH-ERIC crosswalk (§3.3).",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: server/crosswalk.ts (tests/unit/crosswalk-parity.test.ts)",
+    "  - Website: index.html page globals (verify-parity.mjs)",
+    "",
+    "The thesaurus fragments below are copied from the real shipped snapshot, and the",
+    "cases were chosen because they demonstrate why this feature must present",
+    "CANDIDATES rather than a mapping:",
+    "",
+    "  - MeSH `Mindfulness` has no ERIC descriptor. ERIC's `Metacognition` lists",
+    "    Mindfulness as a Use-For synonym, having folded the cognitive-psychology",
+    "    sense of the word into it. The strongest available signal therefore yields a",
+    "    suggestion that is conceptually WRONG for mindfulness-as-meditation.",
+    "  - MeSH `Asthma` folds into ERIC's `Diseases` the same way. Searching ERIC's",
+    "    `Diseases` for asthma research would be useless.",
+    "",
+    "Hence the tiers: a label match is strong, a synonym match is only likely, and an",
+    "inverted-heading head match is merely possible. Every match carries its evidence."
+  ],
+  "version": 1,
+  "thesaurus": {
+    "Burnout": { "b": ["Responses"], "n": ["Teacher Burnout"] },
+    "Teacher Burnout": { "b": ["Burnout"] },
+    "Metacognition": { "u": ["Mindfulness"], "b": ["Cognitive Processes"] },
+    "Depression (Psychology)": { "u": ["Despair", "Dysthymia", "Melancholia"], "b": ["Psychological Patterns"] },
+    "Distance Education": { "u": ["Distance Learning", "Remote Learning"], "b": ["Education"] },
+    "Diseases": { "u": ["Asthma", "Cancer", "Diabetes"], "b": ["Health"] },
+    "Relaxation Training": { "u": ["Progressive Relaxation"], "b": ["Psychotherapy"] }
+  },
+  "normalizeCases": [
+    { "name": "lowercases and trims", "label": "  Distance Education  ", "expected": "distance education" },
+    { "name": "strips ERIC's trailing parenthetical qualifier", "label": "Depression (Psychology)", "expected": "depression" },
+    { "name": "keeps a non-trailing parenthetical", "label": "Resilience (Academic) Studies", "expected": "resilience (academic) studies" },
+    { "name": "collapses internal whitespace", "label": "Distance    Education", "expected": "distance education" },
+    { "name": "strips trailing punctuation", "label": "Burnout;", "expected": "burnout" }
+  ],
+  "headCases": [
+    { "name": "an inverted MeSH heading yields its head noun", "label": "Burnout, Professional", "expected": "burnout" },
+    { "name": "a multi-part inversion still heads on the first comma", "label": "Aged, 80 and over", "expected": "aged" },
+    { "name": "an uninverted heading has no head", "label": "Mindfulness", "expected": null },
+    { "name": "a parenthetical qualifier is stripped before heading", "label": "Depression (Psychology)", "expected": null }
+  ],
+  "crosswalkCases": [
+    {
+      "name": "an exact label match is strong",
+      "meshLabel": "Distance Education",
+      "meshEntryTerms": [],
+      "expected": [
+        { "descriptor": "Distance Education", "kind": "same-label", "confidence": "strong", "evidenceMatches": "Both vocabularies use this label" }
+      ]
+    },
+    {
+      "name": "ERIC's parenthetical qualifier still counts as the same label",
+      "meshLabel": "Depression",
+      "meshEntryTerms": [],
+      "expected": [
+        { "descriptor": "Depression (Psychology)", "kind": "same-label", "confidence": "strong", "evidenceMatches": "ERIC writes it \"Depression (Psychology)\"" }
+      ]
+    },
+    {
+      "name": "an inverted MeSH heading matches ERIC's head noun, but only as possible",
+      "meshLabel": "Burnout, Professional",
+      "meshEntryTerms": [],
+      "expected": [
+        { "descriptor": "Burnout", "kind": "mesh-head-is-eric-label", "confidence": "possible", "evidenceMatches": "Broader than the MeSH heading" }
+      ]
+    },
+    {
+      "name": "a synonym match explains that ERIC FOLDS the concept in — the Mindfulness trap",
+      "meshLabel": "Mindfulness",
+      "meshEntryTerms": [],
+      "expected": [
+        { "descriptor": "Metacognition", "kind": "mesh-label-is-eric-synonym", "confidence": "likely", "evidenceMatches": "folds this concept INTO that descriptor" }
+      ]
+    },
+    {
+      "name": "a medical heading folded into a vague ERIC descriptor is still only likely",
+      "meshLabel": "Asthma",
+      "meshEntryTerms": [],
+      "expected": [
+        { "descriptor": "Diseases", "kind": "mesh-label-is-eric-synonym", "confidence": "likely", "evidenceMatches": "Use-For synonym of \"Diseases\"" }
+      ]
+    },
+    {
+      "name": "a MeSH entry term that is an ERIC descriptor in its own right",
+      "meshLabel": "Relaxation Therapy",
+      "meshEntryTerms": ["Relaxation Training"],
+      "expected": [
+        { "descriptor": "Relaxation Training", "kind": "mesh-entry-is-eric-label", "confidence": "likely", "evidenceMatches": "is an ERIC descriptor in its own right" }
+      ]
+    },
+    {
+      "name": "a MeSH entry term appearing as an ERIC synonym is the weakest signal",
+      "meshLabel": "Diabetes Mellitus",
+      "meshEntryTerms": ["Diabetes"],
+      "expected": [
+        { "descriptor": "Diseases", "kind": "mesh-entry-is-eric-synonym", "confidence": "possible", "evidenceMatches": "appears as a Use-For synonym" }
+      ]
+    },
+    {
+      "name": "no candidate is a real answer, not a failure",
+      "meshLabel": "Myocardial Infarction",
+      "meshEntryTerms": [],
+      "expected": []
+    },
+    {
+      "name": "one descriptor appears once, at its strongest tier",
+      "meshLabel": "Burnout",
+      "meshEntryTerms": ["Teacher Burnout"],
+      "expected": [
+        { "descriptor": "Burnout", "kind": "same-label", "confidence": "strong", "evidenceMatches": "Both vocabularies use this label" },
+        { "descriptor": "Teacher Burnout", "kind": "mesh-entry-is-eric-label", "confidence": "likely", "evidenceMatches": "is an ERIC descriptor in its own right" }
+      ]
+    }
+  ]
+}

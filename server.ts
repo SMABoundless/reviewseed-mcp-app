@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
-import { ericThesaurusDetails, ericThesaurusSearch, ERIC_THESAURUS_EDITION } from "./server/eric-thesaurus.js";
+import { ericThesaurusDetails, ericThesaurusSearch, ERIC_THESAURUS_EDITION, ericThesaurusAll } from "./server/eric-thesaurus.js";
 import {
   CT_ADV_FIELDS, ctAssembleTerm, ctAuthorSearch, ctLookup, ctSearch,
 } from "./server/trials.js";
@@ -24,6 +24,7 @@ import { buildReceipt, diffReceipts } from "./server/receipt.js";
 import { dedupeRecords, prismaCounts, toBibtex, toCsv, toRis } from "./server/export.js";
 import { buildDriftReport } from "./server/drift.js";
 import { buildQueryVariants } from "./server/variants.js";
+import { buildCrosswalkReport, crosswalkCandidates } from "./server/crosswalk.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -398,6 +399,36 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── MeSH ↔ ERIC crosswalk ──────────────────────────────────────────────────
+  server.tool(
+    "reviewseed_crosswalk",
+    "Suggest ERIC Thesaurus descriptors that might correspond to MeSH headings, for a question that spans health and " +
+    "education. Offline, from the shipped ERIC Thesaurus snapshot. CRITICAL: no official MeSH–ERIC mapping exists, so " +
+    "these are CANDIDATES with evidence, not a mapping — report them as such and never substitute one for the other " +
+    "without the user confirming. Confidence is tiered and the tiers matter: `strong` means both vocabularies use the " +
+    "same label; `likely` and `possible` rest on synonyms or on the head noun of an inverted MeSH heading. A synonym " +
+    "match is the least trustworthy, because ERIC sometimes folds a term into a broader descriptor — MeSH " +
+    "`Mindfulness` matches ERIC `Metacognition` that way, and `Asthma` matches `Diseases`, both of which would be " +
+    "poor searches. Finding nothing is a real answer: the vocabularies cover different literatures.",
+    {
+      headings: z.array(z.object({
+        label: z.string().describe("The MeSH heading"),
+        entryTerms: z.array(z.string()).default([])
+          .describe("Its NLM entry terms, if known — they widen the search for a counterpart"),
+      })).min(1).max(30),
+    },
+    async ({ headings }) => {
+      try {
+        const thesaurus = await ericThesaurusAll();
+        if (!thesaurus) {
+          return errorResult(new Error(`Couldn't load the ERIC Thesaurus ${ERIC_THESAURUS_EDITION} snapshot, so no crosswalk is possible.`));
+        }
+        const results = headings.map(h => crosswalkCandidates(h.label, h.entryTerms, thesaurus));
+        return textResult({ ...buildCrosswalkReport(results), thesaurusEdition: ERIC_THESAURUS_EDITION });
       } catch (e) { return errorResult(e); }
     },
   );

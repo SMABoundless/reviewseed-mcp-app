@@ -66,3 +66,12 @@ export async function ericThesaurusDetails(label: string): Promise<VocabDetails 
   const hit = key ? map[key] : null;
   return { terms: hit?.u ?? [], bt: hit?.b ?? [], nt: hit?.n ?? [], scopeNote: "" };
 }
+
+/**
+ * The whole snapshot, for callers that need to scan it rather than look one term
+ * up — the MeSH↔ERIC crosswalk compares every descriptor and its Use-For list.
+ * Returns undefined if the asset failed to load, matching the other accessors.
+ */
+export async function ericThesaurusAll(): Promise<ThesaurusMap | undefined> {
+  return (await loadThesaurus()) ?? undefined;
+}
