@@ -43,7 +43,8 @@ Claude / Host
             ├─ reviewseed_lint_query         → PRESS-mapped syntax/quirk audit of a search string
             ├─ reviewseed_hedges             → published study-design filters, with citations
             ├─ reviewseed_receipt            → fingerprint a strategy; diff a saved receipt against today
-            └─ reviewseed_export_records     → RIS/BibTeX/CSV for Covidence, Rayyan, Zotero + PRISMA counts
+            ├─ reviewseed_export_records     → RIS/BibTeX/CSV for Covidence, Rayyan, Zotero + PRISMA counts
+            └─ reviewseed_terminology_drift   → can a heading even reach the years you're searching?
 ```
 
 **Tools exposed:**
@@ -65,6 +66,7 @@ Claude / Host
 | `reviewseed_hedges` | Claude | Published methodological filters (Cochrane trials, NLM systematic reviews, ERIC/CT.gov limits) with publisher, citation and a `validated` flag — attaches one to a query on request |
 | `reviewseed_receipt` | Claude | Fingerprints a strategy for a review update, and diffs a saved receipt against a fresh one — refusing to compare two *different* searches |
 | `reviewseed_export_records` | Claude | RIS / BibTeX / CSV for a screening tool, deduped with the dropped ids listed, plus PRISMA identified counts and the numbers it can't know |
+| `reviewseed_terminology_drift` | Claude | When NLM created each heading, and the earlier heading to use for years before that — a gap in the indexing, not the literature |
 
 ### Source layout
 
@@ -82,6 +84,8 @@ server/
                         pure, shared between the server tool and the browser UI's live preview
   protocol.ts           buildSearchProtocol: the serializable record every report reads
                         (pool + selections + provenance + search log), pure, injected clock
+  drift.ts              MeSH dateIntroduced/historyNote -> terminology-gap verdicts. The
+                        predicates older docs name (dateCreated, previousIndexing) do NOT exist
   export.ts             RIS/BibTeX/CSV for screening tools — CRLF, two-space RIS tags, braced
                         BibTeX titles; dedup by normalised DOI then accession; PRISMA counts
   receipt.ts            fingerprints the reproducible parts of a strategy (not totals, not ids,
@@ -92,7 +96,7 @@ server/
                         plus the list of what it deliberately does NOT check
   translate.ts          emit-only vendor syntax for the 7 platforms ReviewSeed can't query —
                         strings a human pastes, never executed here, so the caveat travels with them
-server.ts               registers all 16 tools + the UI resource
+server.ts               registers all 17 tools + the UI resource
 main.ts                 HTTP (Express) / stdio entry point + REST fallback (/api/search, /api/lookup, /api/vocab)
 src/mcp-app.tsx          the React UI (source switcher, 4 input modes, vocab explorer, both builders)
 ```

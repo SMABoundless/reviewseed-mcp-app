@@ -1,3 +1,4 @@
+import { meshHistoryQuery } from "./drift.js";
 import type { VocabDetails, VocabRow } from "./types.js";
 
 const MESH_LOOKUP = "https://id.nlm.nih.gov/mesh/lookup/descriptor";
@@ -119,4 +120,18 @@ export async function meshVocabDetails(label: string, id?: string): Promise<Voca
   return entry
     ? { terms: entry.terms, bt: entry.bt, nt: entry.nt, scopeNote }
     : { terms: [], bt: [], nt: [], scopeNote };
+}
+
+/**
+ * When NLM introduced a heading, and its history note. Feeds the terminology-drift
+ * assessment (§3.9). Returns nulls rather than throwing: a missing history is a
+ * reportable unknown, not a failure.
+ */
+export async function meshHistory(id: string): Promise<{ dateIntroduced: string | null; historyNote: string | null }> {
+  const j = await sparql(meshHistoryQuery(id));
+  const b = (j?.results?.bindings ?? [])[0] as Record<string, { value: string }> | undefined;
+  return {
+    dateIntroduced: b?.intro?.value ?? null,
+    historyNote: b?.hist?.value ?? null,
+  };
 }

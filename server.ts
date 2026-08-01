@@ -16,12 +16,13 @@ import {
   ERIC_ADV_FIELDS, ericAssembleTerm, ericAuthorSearch, ericLookup, ericSearch,
 } from "./server/eric.js";
 import { withMatchedVia } from "./server/match.js";
-import { isSlowLookup, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
+import { isSlowLookup, meshHistory, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
 import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import { lintQuery } from "./server/lint.js";
 import { applyHedge, getHedge, HEDGE_CAVEAT, HEDGES, hedgesFor } from "./server/hedges.js";
 import { buildReceipt, diffReceipts } from "./server/receipt.js";
 import { dedupeRecords, prismaCounts, toBibtex, toCsv, toRis } from "./server/export.js";
+import { buildDriftReport } from "./server/drift.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -369,6 +370,44 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Terminology drift ──────────────────────────────────────────────────────
+  server.tool(
+    "reviewseed_terminology_drift",
+    "Check whether MeSH headings can actually reach the years a search claims to cover. A heading only retrieves " +
+    "records indexed AFTER NLM created it: search Mindfulness[MeSH] and nothing before 2014 comes back, because " +
+    "indexers had no such heading — a silent hole in any review claiming complete coverage. For each heading this " +
+    "reports the introduction year, NLM's own history note, and the earlier heading NLM says to use instead where one " +
+    "exists. Pass `coverageFrom` (the first year your search covers); omit it and the search is treated as reaching " +
+    "back indefinitely, which makes gaps MORE relevant, not less. A gap is a gap in the INDEXING, not in the " +
+    "literature — free-text terms close it. Headings from 1966 or earlier are exempt: that's when MEDLINE began.",
+    {
+      headings: z.array(z.object({
+        label: z.string(),
+        id: z.string().optional().describe("MeSH descriptor id if known, e.g. D064866 — saves a lookup"),
+      })).min(1).max(25),
+      coverageFrom: z.number().int().min(1800).max(2200).nullable().default(null)
+        .describe("First year the search covers; null means no date limit"),
+    },
+    async ({ headings, coverageFrom }) => {
+      try {
+        const inputs = [];
+        // Sequential: NLM's SPARQL endpoint is the service that degraded on
+        // 2026-07-29, and a burst is what a report should never send it.
+        for (const h of headings) {
+          let id = h.id;
+          if (!id) {
+            const rows = await meshVocabSearch(h.label);
+            id = rows.find(r => r.label.toLowerCase() === h.label.toLowerCase())?.id ?? rows[0]?.id;
+          }
+          if (!id) { inputs.push({ label: h.label, dateIntroduced: null, historyNote: null }); continue; }
+          const hist = await meshHistory(id);
+          inputs.push({ label: h.label, ...hist });
+        }
+        return textResult(buildDriftReport(inputs, coverageFrom));
       } catch (e) { return errorResult(e); }
     },
   );

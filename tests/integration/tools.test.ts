@@ -37,6 +37,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_open",
     "reviewseed_receipt",
     "reviewseed_search",
+    "reviewseed_terminology_drift",
     "reviewseed_translate_query",
     "reviewseed_validate_recall",
     "reviewseed_vocab_details",
@@ -51,7 +52,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt", "reviewseed_export_records"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt", "reviewseed_export_records", "reviewseed_terminology_drift"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -212,6 +213,68 @@ test("REGRESSION: a fetch that REJECTS (no readable status) is still retried onc
   const r = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
   assert.equal(r.articles.length, 1, "the retry should have recovered the search");
   assert.equal(mock.callsMatching("esearch.fcgi").length, 2, "exactly one retry, not a loop");
+});
+
+// ── Terminology drift ───────────────────────────────────────────────────────
+
+test("terminology_drift flags a heading that cannot reach the searched years", async () => {
+  mock = installMockFetch([
+    { match: "mesh/sparql", body: JSON.stringify({ results: { bindings: [
+      { intro: { value: "2014-01-01" }, hist: { value: "2014" } },
+    ] } }) },
+  ]);
+  const r = payload(await call("reviewseed_terminology_drift", {
+    headings: [{ label: "Mindfulness", id: "D064866" }], coverageFrom: 1990,
+  }));
+  assert.equal(r.counts.gap, 1);
+  assert.equal(r.findings[0].introducedYear, 2014);
+  assert.match(r.findings[0].message, /Records from 1990–2013 were never indexed/);
+  assert.match(r.summary, /gap in the indexing, not in the literature/);
+});
+
+test("terminology_drift names the earlier heading NLM says to use", async () => {
+  mock = installMockFetch([
+    { match: "mesh/sparql", body: JSON.stringify({ results: { bindings: [
+      { intro: { value: "1990-01-01" }, hist: { value: "1990 (1983); use STRESS, PSYCHOLOGICAL 1983-1989" } },
+    ] } }) },
+  ]);
+  const r = payload(await call("reviewseed_terminology_drift", {
+    headings: [{ label: "Burnout, Professional", id: "D002055" }], coverageFrom: 1980,
+  }));
+  assert.deepEqual(r.findings[0].priorHeadings, [{ heading: "STRESS, PSYCHOLOGICAL", from: 1983, to: 1989 }]);
+  assert.match(r.findings[0].message, /use STRESS, PSYCHOLOGICAL/);
+});
+
+test("terminology_drift exempts a heading from MEDLINE's own first year", async () => {
+  mock = installMockFetch([
+    { match: "mesh/sparql", body: JSON.stringify({ results: { bindings: [{ intro: { value: "1966-01-01" } }] } }) },
+  ]);
+  const r = payload(await call("reviewseed_terminology_drift", {
+    headings: [{ label: "Asthma", id: "D001249" }], coverageFrom: null,
+  }));
+  assert.equal(r.findings[0].verdict, "baseline");
+  assert.equal(r.counts.gap, 0);
+});
+
+test("terminology_drift reports an unknown rather than assuming a heading is safe", async () => {
+  mock = installMockFetch([
+    { match: "mesh/sparql", body: JSON.stringify({ results: { bindings: [] } }) },
+  ]);
+  const r = payload(await call("reviewseed_terminology_drift", {
+    headings: [{ label: "Nonexistent", id: "D999999" }], coverageFrom: 2000,
+  }));
+  assert.equal(r.findings[0].verdict, "unknown");
+  assert.match(r.findings[0].message, /MeSH Browser/);
+});
+
+test("terminology_drift with no date limit treats the search as reaching back indefinitely", async () => {
+  mock = installMockFetch([
+    { match: "mesh/sparql", body: JSON.stringify({ results: { bindings: [{ intro: { value: "2014-01-01" } }] } }) },
+  ]);
+  const r = payload(await call("reviewseed_terminology_drift", {
+    headings: [{ label: "Mindfulness", id: "D064866" }], coverageFrom: null,
+  }));
+  assert.match(r.findings[0].message, /everything before 2014/);
 });
 
 // ── Screening handoff ───────────────────────────────────────────────────────
