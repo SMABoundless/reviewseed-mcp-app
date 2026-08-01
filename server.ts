@@ -21,6 +21,7 @@ import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import { lintQuery } from "./server/lint.js";
 import { applyHedge, getHedge, HEDGE_CAVEAT, HEDGES, hedgesFor } from "./server/hedges.js";
 import { buildReceipt, diffReceipts } from "./server/receipt.js";
+import { dedupeRecords, prismaCounts, toBibtex, toCsv, toRis } from "./server/export.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -368,6 +369,46 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Screening handoff ──────────────────────────────────────────────────────
+  server.tool(
+    "reviewseed_export_records",
+    "Turn records into a file a screening tool will accept: RIS (Covidence, Rayyan, Zotero, EndNote), BibTeX, or " +
+    "CSV. Deduplicates within the set by DOI then accession, and reports which ids it dropped so the count can be " +
+    "audited. Also returns PRISMA flow starting numbers when you pass `searchLog` — records identified per database, " +
+    "exported, duplicates removed — together with the numbers ReviewSeed CANNOT know (screened, excluded, included, " +
+    "hand-searched), which must not be presented as a complete flow diagram. Note the format details are load-bearing: " +
+    "RIS uses CRLF and two spaces before each tag's dash, because importers reject anything else. Return the `content` " +
+    "verbatim for the user to save; don't reformat it.",
+    {
+      format: z.enum(["ris", "bibtex", "csv"]).default("ris"),
+      records: z.array(z.record(z.string(), z.unknown())).min(1)
+        .describe("Article objects as returned by reviewseed_search / _lookup"),
+      source: sourceEnum.optional().describe("Fallback database for records that don't carry `src`"),
+      searchLog: z.array(z.object({ at: z.string(), source: z.string(), query: z.string(), total: z.number() }))
+        .default([]).describe("The protocol's search log, to compute PRISMA identified counts"),
+      dedupe: z.boolean().default(true),
+    },
+    async ({ format, records, source, searchLog, dedupe }) => {
+      try {
+        const input = records as never[];
+        const d = dedupe ? dedupeRecords(input) : { records: input, removed: 0, removedIds: [], note: "Deduplication skipped at the caller's request." };
+        const content = format === "bibtex" ? toBibtex(d.records, source)
+          : format === "csv" ? toCsv(d.records, source)
+          : toRis(d.records, source);
+        return textResult({
+          format,
+          filename: `reviewseed-records.${format === "bibtex" ? "bib" : format}`,
+          content,
+          exported: d.records.length,
+          duplicatesRemoved: d.removed,
+          removedIds: d.removedIds,
+          dedupeNote: d.note,
+          prisma: prismaCounts(searchLog, d.records.length, d.removed),
+        });
       } catch (e) { return errorResult(e); }
     },
   );

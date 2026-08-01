@@ -30,6 +30,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_author_search",
     "reviewseed_compare_queries",
     "reviewseed_evidence_map",
+    "reviewseed_export_records",
     "reviewseed_hedges",
     "reviewseed_lint_query",
     "reviewseed_lookup",
@@ -50,7 +51,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt", "reviewseed_export_records"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -211,6 +212,63 @@ test("REGRESSION: a fetch that REJECTS (no readable status) is still retried onc
   const r = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
   assert.equal(r.articles.length, 1, "the retry should have recovered the search");
   assert.equal(mock.callsMatching("esearch.fcgi").length, 2, "exactly one retry, not a loop");
+});
+
+// ── Screening handoff ───────────────────────────────────────────────────────
+
+const EXPORT_RECORDS = [
+  { src: "pubmed", pmid: "1", doi: "10.1/a", title: "One", authors: ["Doe J"], journal: "J", year: "2024" },
+  { src: "pubmed", pmid: "2", doi: "10.1/b", title: "Two", authors: ["Roe A"], journal: "J", year: "2023" },
+  { src: "pubmed", pmid: "3", doi: "https://doi.org/10.1/A", title: "Dup of One", authors: ["Doe J"], year: "2024" },
+];
+
+test("export_records emits importable RIS and reports what it deduplicated", async () => {
+  const r = payload(await call("reviewseed_export_records", { format: "ris", records: EXPORT_RECORDS }));
+  assert.equal(r.exported, 2);
+  assert.equal(r.duplicatesRemoved, 1);
+  assert.deepEqual(r.removedIds, ["3"]);
+  assert.ok(r.content.startsWith("TY  - JOUR\r\n"), "RIS must open with a TY tag and use CRLF");
+  assert.ok(r.content.trimEnd().endsWith("ER  -"));
+  assert.equal(r.filename, "reviewseed-records.ris");
+});
+
+test("export_records names the .bib extension for BibTeX, not .bibtex", async () => {
+  const r = payload(await call("reviewseed_export_records", { format: "bibtex", records: EXPORT_RECORDS }));
+  assert.equal(r.filename, "reviewseed-records.bib");
+  assert.match(r.content, /^@article\{doe2024-1,/);
+});
+
+test("export_records CSV starts with a header row", async () => {
+  const r = payload(await call("reviewseed_export_records", { format: "csv", records: EXPORT_RECORDS }));
+  assert.ok(r.content.startsWith("id,type,title,authors,journal,year,doi,keywords,url\r\n"));
+});
+
+test("export_records can be told not to deduplicate, and says so", async () => {
+  const r = payload(await call("reviewseed_export_records", { records: EXPORT_RECORDS, dedupe: false }));
+  assert.equal(r.exported, 3);
+  assert.equal(r.duplicatesRemoved, 0);
+  assert.match(r.dedupeNote, /skipped/i);
+});
+
+test("export_records returns PRISMA starting numbers AND what it cannot know", async () => {
+  const r = payload(await call("reviewseed_export_records", {
+    records: EXPORT_RECORDS,
+    searchLog: [
+      { at: "t1", source: "pubmed", query: "q", total: 90 },
+      { at: "t2", source: "pubmed", query: "q2", total: 100 },
+      { at: "t3", source: "eric", query: "e", total: 20 },
+    ],
+  }));
+  assert.equal(r.prisma.identifiedTotal, 120, "latest search per database, not the sum of all searches");
+  assert.equal(r.prisma.exported, 2);
+  assert.equal(r.prisma.duplicatesRemoved, 1);
+  assert.ok(r.prisma.notRecorded.some((s: string) => /screened/i.test(s)),
+    "a partial flow diagram must say which numbers are missing");
+});
+
+test("export_records dedupe note refuses credit for cross-database deduplication", async () => {
+  const r = payload(await call("reviewseed_export_records", { records: EXPORT_RECORDS }));
+  assert.match(r.dedupeNote, /ACROSS databases/);
 });
 
 // ── Reproducibility receipt ─────────────────────────────────────────────────

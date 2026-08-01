@@ -1,0 +1,133 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for the screening handoff (§3.12).",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: server/export.ts (tests/unit/export-parity.test.ts)",
+    "  - Website: index.html page globals (verify-parity.mjs)",
+    "",
+    "These files are consumed by OTHER PEOPLE'S software — Covidence, Rayyan, Zotero,",
+    "EndNote — so the byte-level details ARE the feature, and the expectations below",
+    "are byte-exact including line endings:",
+    "  - RIS tags are `XX  - value` with TWO spaces before the dash; records end with",
+    "    a bare `ER  - `. Importers are unforgiving about both.",
+    "  - RIS uses CRLF (\\r\\n). Covidence and EndNote historically choke on bare LF.",
+    "  - BibTeX titles are double-braced or BibTeX lowercases them, and TeX syntax",
+    "    characters are backslash-escaped.",
+    "  - CSV follows RFC 4180: quote on comma/quote/newline, double the quotes.",
+    "",
+    "One case deliberately omits `src` and `url`: the website's PubMed records don't",
+    "set them (a documented divergence), so nothing may assume they exist."
+  ],
+  "version": 1,
+  "records": {
+    "pubmedFull": {
+      "src": "pubmed", "pmid": "31234567", "doi": "10.1/abc",
+      "title": "Mindfulness & burnout: a 50% trial",
+      "authors": ["Doe J", "Roe A"], "journal": "J Test", "year": "2024",
+      "abstract": "Line one.\nLine two.",
+      "keywords": ["burnout"], "mesh": ["Mindfulness"],
+      "url": "https://pubmed.ncbi.nlm.nih.gov/31234567/"
+    },
+    "websiteShaped": {
+      "pmid": "29876543", "doi": "", "title": "No src, no url", "authors": ["Ng B"],
+      "journal": "J Two", "year": "2020", "abstract": "", "keywords": [], "mesh": ["Asthma"]
+    },
+    "ericDocument": {
+      "src": "eric", "pmid": "ED605432", "title": "A report, with comma",
+      "authors": ["Smith, Jane"], "year": "2023", "eric": ["Distance Education"]
+    },
+    "trialRegistration": {
+      "src": "trials", "pmid": "NCT04280705", "title": "A registered trial",
+      "authors": ["Official P"], "year": "2020", "url": "https://clinicaltrials.gov/study/NCT04280705"
+    }
+  },
+  "risCases": [
+    {
+      "name": "a full PubMed record, CRLF throughout, keywords and MeSH both as KW",
+      "records": ["pubmedFull"],
+      "expected": "TY  - JOUR\r\nTI  - Mindfulness & burnout: a 50% trial\r\nAU  - Doe J\r\nAU  - Roe A\r\nT2  - J Test\r\nPY  - 2024\r\nAB  - Line one. Line two.\r\nDO  - 10.1/abc\r\nAN  - 31234567\r\nDB  - PubMed\r\nKW  - burnout\r\nKW  - Mindfulness\r\nUR  - https://pubmed.ncbi.nlm.nih.gov/31234567/\r\nER  - \r\n"
+    },
+    {
+      "name": "an ERIC ED accession is a report, not a journal article",
+      "records": ["ericDocument"],
+      "expected": "TY  - RPRT\r\nTI  - A report, with comma\r\nAU  - Smith, Jane\r\nPY  - 2023\r\nAN  - ED605432\r\nDB  - ERIC\r\nKW  - Distance Education\r\nER  - \r\n"
+    },
+    {
+      "name": "a trial registration is a report, and names its database",
+      "records": ["trialRegistration"],
+      "expected": "TY  - RPRT\r\nTI  - A registered trial\r\nAU  - Official P\r\nPY  - 2020\r\nAN  - NCT04280705\r\nDB  - ClinicalTrials.gov\r\nUR  - https://clinicaltrials.gov/study/NCT04280705\r\nER  - \r\n"
+    },
+    {
+      "name": "website-shaped record without src or url still exports cleanly",
+      "records": ["websiteShaped"],
+      "expected": "TY  - JOUR\r\nTI  - No src, no url\r\nAU  - Ng B\r\nT2  - J Two\r\nPY  - 2020\r\nAN  - 29876543\r\nDB  - PubMed\r\nKW  - Asthma\r\nER  - \r\n"
+    },
+    {
+      "name": "two records are separated by a blank line",
+      "records": ["websiteShaped", "ericDocument"],
+      "expected": "TY  - JOUR\r\nTI  - No src, no url\r\nAU  - Ng B\r\nT2  - J Two\r\nPY  - 2020\r\nAN  - 29876543\r\nDB  - PubMed\r\nKW  - Asthma\r\nER  - \r\n\r\nTY  - RPRT\r\nTI  - A report, with comma\r\nAU  - Smith, Jane\r\nPY  - 2023\r\nAN  - ED605432\r\nDB  - ERIC\r\nKW  - Distance Education\r\nER  - \r\n"
+    },
+    { "name": "no records yields an empty file, not a stray newline", "records": [], "expected": "" }
+  ],
+  "bibtexCases": [
+    {
+      "name": "TeX syntax escaped, title double-braced, key carries the accession",
+      "records": ["pubmedFull"],
+      "expected": "@article{doe2024-31234567,\n  title = {{Mindfulness \\& burnout: a 50\\% trial}},\n  author = {Doe J and Roe A},\n  journal = {J Test},\n  year = {2024},\n  doi = {10.1/abc},\n  note = {Accession 31234567},\n  url = {https://pubmed.ncbi.nlm.nih.gov/31234567/}\n}\n"
+    },
+    {
+      "name": "a report becomes a techreport with an institution, not a journal",
+      "records": ["ericDocument"],
+      "expected": "@techreport{smith2023-ED605432,\n  title = {{A report, with comma}},\n  author = {Smith, Jane},\n  year = {2023},\n  note = {Accession ED605432}\n}\n"
+    },
+    { "name": "no records yields an empty file", "records": [], "expected": "" }
+  ],
+  "csvCases": [
+    {
+      "name": "header plus quoted fields where a comma appears",
+      "records": ["ericDocument"],
+      "expected": "id,type,title,authors,journal,year,doi,keywords,url\r\nED605432,RPRT,\"A report, with comma\",\"Smith, Jane\",,2023,,Distance Education,\r\n"
+    },
+    {
+      "name": "keywords and MeSH are merged into one semicolon-separated cell",
+      "records": ["pubmedFull"],
+      "expected": "id,type,title,authors,journal,year,doi,keywords,url\r\n31234567,JOUR,Mindfulness & burnout: a 50% trial,Doe J; Roe A,J Test,2024,10.1/abc,burnout; Mindfulness,https://pubmed.ncbi.nlm.nih.gov/31234567/\r\n"
+    },
+    { "name": "no records still emits the header row", "records": [], "expected": "id,type,title,authors,journal,year,doi,keywords,url\r\n" }
+  ],
+  "cellCases": [
+    { "name": "plain text is unquoted", "value": "asthma", "expected": "asthma" },
+    { "name": "a comma forces quoting", "value": "a,b", "expected": "\"a,b\"" },
+    { "name": "quotes are doubled and the cell quoted", "value": "has \"quotes\", commas", "expected": "\"has \"\"quotes\"\", commas\"" },
+    { "name": "a newline forces quoting", "value": "a\nb", "expected": "\"a\nb\"" }
+  ],
+  "texCases": [
+    { "name": "underscore and braces", "value": "a_b {c}", "expected": "a\\_b \\{c\\}" },
+    { "name": "percent, ampersand, dollar", "value": "50% & $x", "expected": "50\\% \\& \\$x" },
+    { "name": "a backslash becomes a command, and isn't re-escaped", "value": "a\\b", "expected": "a\\textbackslash{}b" },
+    { "name": "tilde and caret", "value": "a~b^c", "expected": "a\\textasciitilde{}b\\textasciicircum{}c" }
+  ],
+  "dedupeCases": [
+    {
+      "name": "a repeated accession is dropped",
+      "records": [{ "pmid": "1" }, { "pmid": "2" }, { "pmid": "1" }],
+      "expectedKept": ["1", "2"], "expectedRemoved": ["1"]
+    },
+    {
+      "name": "the same DOI in different forms and cases is one record",
+      "records": [{ "pmid": "1", "doi": "10.1/abc" }, { "pmid": "2", "doi": "https://doi.org/10.1/ABC" }],
+      "expectedKept": ["1"], "expectedRemoved": ["2"]
+    },
+    {
+      "name": "a dx.doi.org prefix is normalised too",
+      "records": [{ "pmid": "1", "doi": "10.1/x" }, { "pmid": "2", "doi": "http://dx.doi.org/10.1/x" }],
+      "expectedKept": ["1"], "expectedRemoved": ["2"]
+    },
+    {
+      "name": "records without a DOI are kept apart on accession alone",
+      "records": [{ "pmid": "1", "doi": "" }, { "pmid": "2", "doi": "" }],
+      "expectedKept": ["1", "2"], "expectedRemoved": []
+    }
+  ]
+}
