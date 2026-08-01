@@ -274,7 +274,7 @@ test("terminology_drift with no date limit treats the search as reaching back in
   const r = payload(await call("reviewseed_terminology_drift", {
     headings: [{ label: "Mindfulness", id: "D064866" }], coverageFrom: null,
   }));
-  assert.match(r.findings[0].message, /everything before 2014/);
+  assert.match(r.findings[0].message, /Records published before 2014/);
 });
 
 // ── Screening handoff ───────────────────────────────────────────────────────

@@ -146,9 +146,13 @@ export function assessDrift(input: DriftInput): DriftFinding {
     return { ...base, verdict: "covered",
       message: `${label} was introduced in ${introducedYear}, and your search starts in ${coverageFrom}, so nothing is lost to terminology here.` };
   }
-  const span = coverageFrom !== null ? `${coverageFrom}–${introducedYear - 1}` : `everything before ${introducedYear}`;
+  // Phrased two ways on purpose: "Records from everything before 1987" reads as a
+  // typo, which is what the first version produced.
+  const span = coverageFrom !== null
+    ? `Records from ${coverageFrom}–${introducedYear - 1}`
+    : `Records published before ${introducedYear}`;
   return { ...base, verdict: "gap",
-    message: `${label} was introduced in ${introducedYear}. Records from ${span} were never indexed with it, so this heading cannot retrieve them.${priorText}` };
+    message: `${label} was introduced in ${introducedYear}. ${span} were never indexed with it, so this heading cannot retrieve them.${priorText}` };
 }
 
 export interface DriftReport {

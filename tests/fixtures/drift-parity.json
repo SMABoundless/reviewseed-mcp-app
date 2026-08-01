@@ -22,83 +22,198 @@
     {
       "name": "prior heading with a full year range",
       "note": "1990 (1983); use STRESS, PSYCHOLOGICAL 1983-1989",
-      "expected": { "priorHeadings": [{ "heading": "STRESS, PSYCHOLOGICAL", "from": 1983, "to": 1989 }], "hasUnparsedText": false }
+      "expected": {
+        "priorHeadings": [
+          {
+            "heading": "STRESS, PSYCHOLOGICAL",
+            "from": 1983,
+            "to": 1989
+          }
+        ],
+        "hasUnparsedText": false
+      }
     },
     {
       "name": "two-digit end year expands to the 20th century",
       "note": "1994(1975); use CHOLINEPHOSPHOTRANSFERASE 1975-93",
-      "expected": { "priorHeadings": [{ "heading": "CHOLINEPHOSPHOTRANSFERASE", "from": 1975, "to": 1993 }], "hasUnparsedText": false }
+      "expected": {
+        "priorHeadings": [
+          {
+            "heading": "CHOLINEPHOSPHOTRANSFERASE",
+            "from": 1975,
+            "to": 1993
+          }
+        ],
+        "hasUnparsedText": false
+      }
     },
     {
       "name": "two-digit leading years are ignored, not misread as headings",
       "note": "84(77); for DNA POLYMERASE ALPHA use DNA POLYMERASE II 1982-97",
-      "expected": { "priorHeadings": [{ "heading": "DNA POLYMERASE II", "from": 1982, "to": 1997 }], "hasUnparsedText": true }
+      "expected": {
+        "priorHeadings": [
+          {
+            "heading": "DNA POLYMERASE II",
+            "from": 1982,
+            "to": 1997
+          }
+        ],
+        "hasUnparsedText": true
+      }
     },
     {
       "name": "in 'for A use B', B is the heading to search",
       "note": "2023; for DATA SOURCES use INFORMATION STORAGE AND RETRIEVAL 1986-2022",
-      "expected": { "priorHeadings": [{ "heading": "INFORMATION STORAGE AND RETRIEVAL", "from": 1986, "to": 2022 }], "hasUnparsedText": true }
+      "expected": {
+        "priorHeadings": [
+          {
+            "heading": "INFORMATION STORAGE AND RETRIEVAL",
+            "from": 1986,
+            "to": 2022
+          }
+        ],
+        "hasUnparsedText": true
+      }
     },
     {
       "name": "a single year means one year, not an open range",
       "note": "2023; use Health Disparity, Minority and Vulnerable Populations 2022",
-      "expected": { "priorHeadings": [{ "heading": "Health Disparity, Minority and Vulnerable Populations", "from": 2022, "to": 2022 }], "hasUnparsedText": false }
+      "expected": {
+        "priorHeadings": [
+          {
+            "heading": "Health Disparity, Minority and Vulnerable Populations",
+            "from": 2022,
+            "to": 2022
+          }
+        ],
+        "hasUnparsedText": false
+      }
     },
     {
       "name": "two clauses in one note both parse",
       "note": "1994(1975); use CHOLINEPHOSPHOTRANSFERASE 1975-93; for 1-ALKYL use DIACYL 1980-90",
-      "expected": { "priorHeadings": [{ "heading": "CHOLINEPHOSPHOTRANSFERASE", "from": 1975, "to": 1993 }, { "heading": "DIACYL", "from": 1980, "to": 1990 }], "hasUnparsedText": true }
+      "expected": {
+        "priorHeadings": [
+          {
+            "heading": "CHOLINEPHOSPHOTRANSFERASE",
+            "from": 1975,
+            "to": 1993
+          },
+          {
+            "heading": "DIACYL",
+            "from": 1980,
+            "to": 1990
+          }
+        ],
+        "hasUnparsedText": true
+      }
     },
-    { "name": "a bare year note names no prior heading", "note": "2014", "expected": { "priorHeadings": [], "hasUnparsedText": false } },
-    { "name": "a parenthesised year note names no prior heading", "note": "2021(2020)", "expected": { "priorHeadings": [], "hasUnparsedText": false } },
-    { "name": "an empty note parses to nothing", "note": "", "expected": { "priorHeadings": [], "hasUnparsedText": false } }
+    {
+      "name": "a bare year note names no prior heading",
+      "note": "2014",
+      "expected": {
+        "priorHeadings": [],
+        "hasUnparsedText": false
+      }
+    },
+    {
+      "name": "a parenthesised year note names no prior heading",
+      "note": "2021(2020)",
+      "expected": {
+        "priorHeadings": [],
+        "hasUnparsedText": false
+      }
+    },
+    {
+      "name": "an empty note parses to nothing",
+      "note": "",
+      "expected": {
+        "priorHeadings": [],
+        "hasUnparsedText": false
+      }
+    }
   ],
   "driftCases": [
     {
       "name": "a 2014 heading cannot reach a search that starts in 1990",
-      "input": { "label": "Mindfulness", "dateIntroduced": "2014-01-01", "historyNote": "2014", "coverageFrom": 1990 },
+      "input": {
+        "label": "Mindfulness",
+        "dateIntroduced": "2014-01-01",
+        "historyNote": "2014",
+        "coverageFrom": 1990
+      },
       "expectedVerdict": "gap",
       "expectedYear": 2014,
       "messageMatches": "Records from 1990–2013 were never indexed with it"
     },
     {
-      "name": "with no date limit the gap is everything before the heading existed",
-      "input": { "label": "Mindfulness", "dateIntroduced": "2014-01-01", "historyNote": "2014", "coverageFrom": null },
+      "name": "with no date limit the gap is every year before the heading existed",
+      "input": {
+        "label": "Mindfulness",
+        "dateIntroduced": "2014-01-01",
+        "historyNote": "2014",
+        "coverageFrom": null
+      },
       "expectedVerdict": "gap",
       "expectedYear": 2014,
-      "messageMatches": "everything before 2014"
+      "messageMatches": "Records published before 2014"
     },
     {
       "name": "a heading with no replacement says free text is the only route",
-      "input": { "label": "Mindfulness", "dateIntroduced": "2014-01-01", "historyNote": "2014", "coverageFrom": null },
+      "input": {
+        "label": "Mindfulness",
+        "dateIntroduced": "2014-01-01",
+        "historyNote": "2014",
+        "coverageFrom": null
+      },
       "expectedVerdict": "gap",
       "expectedYear": 2014,
       "messageMatches": "names no replacement heading"
     },
     {
       "name": "a heading with a replacement names it and its years",
-      "input": { "label": "Burnout, Professional", "dateIntroduced": "1990-01-01", "historyNote": "1990 (1983); use STRESS, PSYCHOLOGICAL 1983-1989", "coverageFrom": 1980 },
+      "input": {
+        "label": "Burnout, Professional",
+        "dateIntroduced": "1990-01-01",
+        "historyNote": "1990 (1983); use STRESS, PSYCHOLOGICAL 1983-1989",
+        "coverageFrom": 1980
+      },
       "expectedVerdict": "gap",
       "expectedYear": 1990,
       "messageMatches": "use STRESS, PSYCHOLOGICAL (1983–1989)"
     },
     {
       "name": "a search starting at the introduction year loses nothing",
-      "input": { "label": "Burnout, Professional", "dateIntroduced": "1990-01-01", "historyNote": "1990 (1983); use STRESS, PSYCHOLOGICAL 1983-1989", "coverageFrom": 1990 },
+      "input": {
+        "label": "Burnout, Professional",
+        "dateIntroduced": "1990-01-01",
+        "historyNote": "1990 (1983); use STRESS, PSYCHOLOGICAL 1983-1989",
+        "coverageFrom": 1990
+      },
       "expectedVerdict": "covered",
       "expectedYear": 1990,
       "messageMatches": "nothing is lost to terminology here"
     },
     {
       "name": "a 1966 heading is baseline, never a gap",
-      "input": { "label": "Asthma", "dateIntroduced": "1966-01-01", "historyNote": "", "coverageFrom": null },
+      "input": {
+        "label": "Asthma",
+        "dateIntroduced": "1966-01-01",
+        "historyNote": "",
+        "coverageFrom": null
+      },
       "expectedVerdict": "baseline",
       "expectedYear": 1966,
       "messageMatches": "since MEDLINE's own beginning"
     },
     {
       "name": "no introduction date is unknown, not assumed safe",
-      "input": { "label": "Mystery Heading", "dateIntroduced": null, "historyNote": "", "coverageFrom": 2000 },
+      "input": {
+        "label": "Mystery Heading",
+        "dateIntroduced": null,
+        "historyNote": "",
+        "coverageFrom": 2000
+      },
       "expectedVerdict": "unknown",
       "expectedYear": null,
       "messageMatches": "Look it up in the MeSH Browser"
@@ -108,7 +223,12 @@
     {
       "name": "the history query asks for exactly the two predicates that exist",
       "id": "D064866",
-      "mustContain": ["meshv:dateIntroduced", "meshv:historyNote", "mesh:D064866", "OPTIONAL"]
+      "mustContain": [
+        "meshv:dateIntroduced",
+        "meshv:historyNote",
+        "mesh:D064866",
+        "OPTIONAL"
+      ]
     }
   ]
 }
