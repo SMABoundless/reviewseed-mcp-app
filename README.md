@@ -40,7 +40,8 @@ Claude / Host
             ├─ reviewseed_translate_query    → emit-only syntax for Ovid/Embase/Scopus/WoS/EBSCO/ProQuest/Cochrane
             ├─ reviewseed_validate_recall    → known-item test + leave-one-out term criticality
             ├─ reviewseed_evidence_map       → concept × concept intersection counts (scoping/mapping gaps)
-            └─ reviewseed_lint_query         → PRESS-mapped syntax/quirk audit of a search string
+            ├─ reviewseed_lint_query         → PRESS-mapped syntax/quirk audit of a search string
+            └─ reviewseed_hedges             → published study-design filters, with citations
 ```
 
 **Tools exposed:**
@@ -59,6 +60,7 @@ Claude / Host
 | `reviewseed_validate_recall` | Claude | Does the query retrieve the seeds it was built from? Reports misses, and optionally which terms are load-bearing for recall |
 | `reviewseed_evidence_map` | Claude | Concept × concept counts for a scoping/mapping review — read the zeros, not the big numbers |
 | `reviewseed_lint_query` | Claude | Deterministic audit of a search string, mapped to the six PRESS domains — plus what it deliberately did *not* check |
+| `reviewseed_hedges` | Claude | Published methodological filters (Cochrane trials, NLM systematic reviews, ERIC/CT.gov limits) with publisher, citation and a `validated` flag — attaches one to a query on request |
 
 ### Source layout
 
@@ -76,11 +78,13 @@ server/
                         pure, shared between the server tool and the browser UI's live preview
   protocol.ts           buildSearchProtocol: the serializable record every report reads
                         (pool + selections + provenance + search log), pure, injected clock
+  hedges.ts             9 published methodological filters with publisher, citation, trade-off
+                        and an honest `validated` flag — every string verified live 2026-08-01
   lint.ts               13 deterministic search-lint rules mapped to the six PRESS domains,
                         plus the list of what it deliberately does NOT check
   translate.ts          emit-only vendor syntax for the 7 platforms ReviewSeed can't query —
                         strings a human pastes, never executed here, so the caveat travels with them
-server.ts               registers all 13 tools + the UI resource
+server.ts               registers all 14 tools + the UI resource
 main.ts                 HTTP (Express) / stdio entry point + REST fallback (/api/search, /api/lookup, /api/vocab)
 src/mcp-app.tsx          the React UI (source switcher, 4 input modes, vocab explorer, both builders)
 ```

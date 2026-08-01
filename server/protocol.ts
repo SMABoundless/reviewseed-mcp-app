@@ -27,8 +27,10 @@ export type TermKind = "keyword" | "mesh" | "eric" | "query";
 // which is why the capture sites matter more than this type does.
 // "facet" is website-only today (its ERIC sampled-facet panel can add a
 // descriptor straight to the pool); the value lives here so one protocol
-// consumer handles both surfaces.
-export type TermOrigin = "seed" | "vocab" | "synonym" | "advanced" | "facet" | "manual";
+// consumer handles both surfaces. "hedge" marks a published methodological
+// filter (§3.11) — a report must be able to cite it rather than present it as
+// something the searcher typed.
+export type TermOrigin = "seed" | "vocab" | "synonym" | "advanced" | "facet" | "hedge" | "manual";
 
 export interface TermProvenance {
   ids: string[];     // record ids (PMID / ERIC accession / NCT id) that contributed the term

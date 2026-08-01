@@ -1,0 +1,75 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for applying methodological filters (§3.11).",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: applyHedge in server/hedges.ts (tests/unit/hedge-parity.test.ts)",
+    "  - Website: index.html's page-global applyHedge (verify-parity.mjs)",
+    "",
+    "The CATALOGUE itself — strings, publishers, citations, validated flags — is data,",
+    "pinned in the generated shared-surface.json. These cases cover the one piece of",
+    "BEHAVIOR: how a filter attaches to a query.",
+    "",
+    "The load-bearing case is `wraps the query in parentheses`. A hedge is a chain of",
+    "ORs; AND'ing it onto an unwrapped query rebinds the operators and silently",
+    "changes what the search returns — the exact failure a filter is supposed to",
+    "prevent. Every string was also executed against the live API on 2026-08-01."
+  ],
+  "version": 1,
+  "cases": [
+    {
+      "name": "wraps the query in parentheses before AND'ing the filter",
+      "hedge": "pubmed-systematic-reviews",
+      "query": "asthma OR wheeze",
+      "expected": "(asthma OR wheeze) AND (systematic review[pt])"
+    },
+    {
+      "name": "an exclusion filter attaches with NOT, not AND",
+      "hedge": "pubmed-exclude-animal-only",
+      "query": "asthma",
+      "expected": "(asthma) NOT ((animals[mh] NOT humans[mh]))"
+    },
+    {
+      "name": "a multi-line framework query is flattened first",
+      "hedge": "pubmed-humans-only",
+      "query": "(\"a\"[tiab])\nAND (\"b\"[tiab])",
+      "expected": "((\"a\"[tiab]) AND (\"b\"[tiab])) AND (humans[mesh])"
+    },
+    {
+      "name": "an empty query yields the filter alone, parenthesised",
+      "hedge": "pubmed-systematic-reviews",
+      "query": "",
+      "expected": "(systematic review[pt])"
+    },
+    {
+      "name": "an exclusion filter with no query yields nothing, not a bare NOT",
+      "hedge": "pubmed-exclude-animal-only",
+      "query": "",
+      "expected": ""
+    },
+    {
+      "name": "ERIC field syntax passes through untouched",
+      "hedge": "eric-peer-reviewed",
+      "query": "subject:\"Distance Education\"",
+      "expected": "(subject:\"Distance Education\") AND (peerreviewed:T)"
+    },
+    {
+      "name": "ERIC quoted field values survive",
+      "hedge": "eric-higher-education",
+      "query": "tutoring",
+      "expected": "(tutoring) AND (educationlevel:\"Higher Education\")"
+    },
+    {
+      "name": "ClinicalTrials.gov AREA syntax passes through untouched",
+      "hedge": "trials-interventional",
+      "query": "AREA[BasicSearch]\"mindfulness\"",
+      "expected": "(AREA[BasicSearch]\"mindfulness\") AND (AREA[StudyType]INTERVENTIONAL)"
+    },
+    {
+      "name": "the Cochrane trial filter attaches whole, operators intact",
+      "hedge": "pubmed-rct-cochrane-sensitivity",
+      "query": "asthma",
+      "expected": "(asthma) AND (randomized controlled trial[pt] OR controlled clinical trial[pt] OR randomized[tiab] OR placebo[tiab] OR clinical trials as topic[mesh:noexp] OR randomly[tiab] OR trial[ti] NOT (animals[mh] NOT humans[mh]))"
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import { withMatchedVia } from "./server/match.js";
 import { isSlowLookup, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
 import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import { lintQuery } from "./server/lint.js";
+import { applyHedge, getHedge, HEDGE_CAVEAT, HEDGES, hedgesFor } from "./server/hedges.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -366,6 +367,41 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Methodological filters (hedges) ────────────────────────────────────────
+  server.tool(
+    "reviewseed_hedges",
+    "List published methodological search filters — 'hedges' — for a source, or attach one to a query. Covers the " +
+    "Cochrane sensitivity-maximising randomised-trial filter, NLM's systematic-review publication type, human/animal " +
+    "scoping, ERIC peer-review and education-level limits, and ClinicalTrials.gov study type. EVERY entry carries its " +
+    "publisher, a citation, its sensitivity/precision trade-off, and a `validated` flag that is FALSE for convenience " +
+    "clusters nobody has measured — pass that flag on to the user rather than presenting all filters as equivalent. " +
+    "These strings are point-in-time transcriptions verified on 2026-08-01; always surface `caveat` telling the user to " +
+    "check the citation against the current published version before relying on it in a review. Pass `apply` with a " +
+    "query to get the combined string back, correctly parenthesised.",
+    {
+      source: sourceEnum.optional().describe("Restrict to one source's filters; omit for the whole catalogue"),
+      apply: z.object({
+        hedgeId: z.string(),
+        query: z.string(),
+      }).optional().describe("Attach a filter to a query and return the combined string"),
+    },
+    async ({ source, apply }) => {
+      try {
+        if (apply) {
+          const h = getHedge(apply.hedgeId);
+          if (!h) return errorResult(new Error(`Unknown filter "${apply.hedgeId}". Call without \`apply\` to list the catalogue.`));
+          return textResult({
+            hedge: h,
+            query: applyHedge(apply.query, h),
+            caveat: HEDGE_CAVEAT,
+            ...(h.validated ? {} : { warning: "This filter is NOT validated — no published performance data. Say so when you report it." }),
+          });
+        }
+        return textResult({ caveat: HEDGE_CAVEAT, hedges: source ? hedgesFor(source) : HEDGES });
       } catch (e) { return errorResult(e); }
     },
   );

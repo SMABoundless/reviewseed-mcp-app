@@ -30,6 +30,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_author_search",
     "reviewseed_compare_queries",
     "reviewseed_evidence_map",
+    "reviewseed_hedges",
     "reviewseed_lint_query",
     "reviewseed_lookup",
     "reviewseed_open",
@@ -48,7 +49,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -209,6 +210,49 @@ test("REGRESSION: a fetch that REJECTS (no readable status) is still retried onc
   const r = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
   assert.equal(r.articles.length, 1, "the retry should have recovered the search");
   assert.equal(mock.callsMatching("esearch.fcgi").length, 2, "exactly one retry, not a loop");
+});
+
+// ── Methodological filters ──────────────────────────────────────────────────
+
+test("hedges lists a source's filters, each with provenance and the caveat", async () => {
+  const r = payload(await call("reviewseed_hedges", { source: "eric" }));
+  assert.ok(r.hedges.length > 0);
+  assert.ok(r.hedges.every((h: any) => h.source === "eric"));
+  assert.ok(r.hedges.every((h: any) => h.publisher && h.citation && h.tradeoff));
+  assert.match(r.caveat, /transcription/i);
+});
+
+test("hedges attaches a filter with the query parenthesised", async () => {
+  const r = payload(await call("reviewseed_hedges", {
+    apply: { hedgeId: "pubmed-systematic-reviews", query: "asthma OR wheeze" },
+  }));
+  assert.equal(r.query, "(asthma OR wheeze) AND (systematic review[pt])");
+  assert.match(r.caveat, /current published version/i);
+});
+
+test("hedges warns explicitly when a filter is not validated", async () => {
+  const r = payload(await call("reviewseed_hedges", {
+    apply: { hedgeId: "pubmed-observational-designs", query: "asthma" },
+  }));
+  assert.match(r.warning, /NOT validated/);
+  assert.equal(r.hedge.validated, false);
+});
+
+test("hedges adds no warning for a validated filter", async () => {
+  const r = payload(await call("reviewseed_hedges", {
+    apply: { hedgeId: "pubmed-rct-cochrane-sensitivity", query: "asthma" },
+  }));
+  assert.equal(r.warning, undefined);
+  assert.equal(r.hedge.publisher, "Cochrane");
+});
+
+test("an unknown filter id is refused, pointing at the catalogue", async () => {
+  // This server reports tool-level failures as an `error` field in the payload
+  // rather than a protocol-level isError, so the model always gets readable text.
+  const r = payload(await call("reviewseed_hedges", { apply: { hedgeId: "nope", query: "asthma" } }));
+  assert.match(r.error, /Unknown filter "nope"/);
+  assert.match(r.error, /list the catalogue/, "the refusal must say how to recover");
+  assert.equal(r.query, undefined, "no query is returned for an unknown filter");
 });
 
 // ── Search lint ─────────────────────────────────────────────────────────────

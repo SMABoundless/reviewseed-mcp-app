@@ -7,6 +7,7 @@ import { FRAMEWORKS } from "../../server/query.js";
 import { SLOW_LOOKUP_MS, SLOW_LOOKUP_NOTICE } from "../../server/mesh.js";
 import { PLATFORMS, PLATFORM_CAVEAT } from "../../server/translate.js";
 import { LINT_RULES, PRESS_DOMAINS } from "../../server/lint.js";
+import { HEDGES, HEDGE_CAVEAT } from "../../server/hedges.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const SHARED_SURFACE_PATH = path.join(HERE, "..", "fixtures", "shared-surface.json");
@@ -35,6 +36,10 @@ export function buildSharedSurface() {
     // The emit-only translation roster. Data, not behavior: if one repo gains a
     // platform (or edits a vendor note) and the other doesn't, this fails
     // immediately instead of the two quietly offering different menus.
+    // The hedge catalogue. Data, and the most consequential kind: these strings go
+    // into real search strategies, so one repo carrying a different transcription
+    // than the other must fail loudly rather than silently changing someone's recall.
+    hedges: { caveat: HEDGE_CAVEAT, list: HEDGES },
     // The lint rule catalogue. Data, not behavior: neither repo may add a rule or
     // reclassify a severity without the other going red — a check that fires in
     // one app and not the other would make the audit unrepeatable.
