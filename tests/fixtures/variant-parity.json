@@ -1,0 +1,324 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for the query tuning ladder (§3.7).",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: server/variants.ts (tests/unit/variant-parity.test.ts)",
+    "  - Website: index.html's page-global buildQueryVariants (verify-parity.mjs)",
+    "",
+    "Every variant is built by the SAME buildBooleanQuery the app uses, never by",
+    "string surgery on the finished query — a variant assembled differently from the",
+    "real thing would be measuring something else, and the counts would be a lie.",
+    "",
+    "The `skipped` list is asserted as carefully as the variants: a rung omitted",
+    "silently makes an incomplete ladder read as a complete comparison."
+  ],
+  "version": 1,
+  "cases": [
+    {
+      "name": "keywords and headings: every rung differs from the baseline",
+      "source": "pubmed",
+      "pool": {
+        "keywords": [
+          "burnout",
+          "compassion fatigue"
+        ],
+        "mesh": [
+          "Burnout, Professional"
+        ],
+        "eric": [],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {},
+      "opts": {},
+      "expectedVariants": [
+        {
+          "key": "as-built",
+          "query": "(\"burnout\"[tiab] OR \"compassion fatigue\"[tiab]) AND \"Burnout, Professional\"[MeSH Terms]"
+        },
+        {
+          "key": "vocab-only",
+          "query": "\"Burnout, Professional\"[MeSH Terms]"
+        },
+        {
+          "key": "keywords-only",
+          "query": "(\"burnout\"[tiab] OR \"compassion fatigue\"[tiab])"
+        },
+        {
+          "key": "keywords-all-fields",
+          "query": "(\"burnout\"[all] OR \"compassion fatigue\"[all]) AND \"Burnout, Professional\"[MeSH Terms]"
+        },
+        {
+          "key": "keywords-title-only",
+          "query": "(\"burnout\"[ti] OR \"compassion fatigue\"[ti]) AND \"Burnout, Professional\"[MeSH Terms]"
+        },
+        {
+          "key": "keywords-and",
+          "query": "(\"burnout\"[tiab] AND \"compassion fatigue\"[tiab]) AND \"Burnout, Professional\"[MeSH Terms]"
+        }
+      ],
+      "expectedSkipped": []
+    },
+    {
+      "name": "one keyword, no headings: three rungs are impossible and say why",
+      "source": "pubmed",
+      "pool": {
+        "keywords": [
+          "burnout"
+        ],
+        "mesh": [],
+        "eric": [],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {},
+      "opts": {},
+      "expectedVariants": [
+        {
+          "key": "as-built",
+          "query": "\"burnout\"[tiab]"
+        },
+        {
+          "key": "keywords-all-fields",
+          "query": "\"burnout\"[all]"
+        },
+        {
+          "key": "keywords-title-only",
+          "query": "\"burnout\"[ti]"
+        }
+      ],
+      "expectedSkipped": [
+        {
+          "key": "vocab-only",
+          "reasonMatches": "empty query"
+        },
+        {
+          "key": "keywords-only",
+          "reasonMatches": "already the query as built"
+        },
+        {
+          "key": "keywords-and",
+          "reasonMatches": "at least two keywords"
+        }
+      ]
+    },
+    {
+      "name": "headings only: the free-text rungs are all impossible",
+      "source": "pubmed",
+      "pool": {
+        "keywords": [],
+        "mesh": [
+          "Asthma"
+        ],
+        "eric": [],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {},
+      "opts": {},
+      "expectedVariants": [
+        {
+          "key": "as-built",
+          "query": "\"Asthma\"[MeSH Terms]"
+        }
+      ],
+      "expectedSkipped": [
+        {
+          "key": "vocab-only",
+          "reasonMatches": "No keywords pooled"
+        },
+        {
+          "key": "keywords-only",
+          "reasonMatches": "empty query"
+        },
+        {
+          "key": "keywords-all-fields",
+          "reasonMatches": "No keywords to broaden"
+        },
+        {
+          "key": "keywords-title-only",
+          "reasonMatches": "No keywords to narrow"
+        },
+        {
+          "key": "keywords-and",
+          "reasonMatches": "at least two keywords"
+        }
+      ]
+    },
+    {
+      "name": "a per-keyword field tag is respected in the baseline and overridden in the rungs",
+      "source": "pubmed",
+      "pool": {
+        "keywords": [
+          "burnout",
+          "stress"
+        ],
+        "mesh": [],
+        "eric": [],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {
+        "burnout": "ti"
+      },
+      "opts": {},
+      "expectedVariants": [
+        {
+          "key": "as-built",
+          "query": "(\"burnout\"[ti] OR \"stress\"[tiab])"
+        },
+        {
+          "key": "keywords-all-fields",
+          "query": "(\"burnout\"[all] OR \"stress\"[all])"
+        },
+        {
+          "key": "keywords-title-only",
+          "query": "(\"burnout\"[ti] OR \"stress\"[ti])"
+        },
+        {
+          "key": "keywords-and",
+          "query": "(\"burnout\"[ti] AND \"stress\"[tiab])"
+        }
+      ],
+      "expectedSkipped": [
+        {
+          "key": "vocab-only",
+          "reasonMatches": "empty query"
+        },
+        {
+          "key": "keywords-only",
+          "reasonMatches": "already the query as built"
+        }
+      ]
+    },
+    {
+      "name": "eric syntax: ERIC's all-fields form is a bare quoted term, so that rung is distinct",
+      "source": "eric",
+      "pool": {
+        "keywords": [
+          "tutoring"
+        ],
+        "mesh": [],
+        "eric": [
+          "Rural Schools"
+        ],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {},
+      "opts": {},
+      "expectedVariants": [
+        {
+          "key": "as-built",
+          "query": "(title:\"tutoring\" OR description:\"tutoring\") AND subject:\"Rural Schools\""
+        },
+        {
+          "key": "vocab-only",
+          "query": "subject:\"Rural Schools\""
+        },
+        {
+          "key": "keywords-only",
+          "query": "(title:\"tutoring\" OR description:\"tutoring\")"
+        },
+        {
+          "key": "keywords-all-fields",
+          "query": "\"tutoring\" AND subject:\"Rural Schools\""
+        },
+        {
+          "key": "keywords-title-only",
+          "query": "title:\"tutoring\" AND subject:\"Rural Schools\""
+        }
+      ],
+      "expectedSkipped": [
+        {
+          "key": "keywords-and",
+          "reasonMatches": "at least two keywords"
+        }
+      ]
+    }
+  ],
+  "leaveOneOutCases": [
+    {
+      "name": "each term's pool is named, and removing the only term is flagged empty",
+      "source": "pubmed",
+      "pool": {
+        "keywords": [
+          "burnout"
+        ],
+        "mesh": [
+          "Asthma"
+        ],
+        "eric": [],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {},
+      "opts": {},
+      "expected": [
+        {
+          "term": "burnout",
+          "pool": "keywords",
+          "query": "\"Asthma\"[MeSH Terms]",
+          "empty": false
+        },
+        {
+          "term": "Asthma",
+          "pool": "mesh",
+          "query": "\"burnout\"[tiab]",
+          "empty": false
+        }
+      ]
+    },
+    {
+      "name": "a sole term leaves an empty query when removed",
+      "source": "pubmed",
+      "pool": {
+        "keywords": [
+          "burnout"
+        ],
+        "mesh": [],
+        "eric": [],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {},
+      "opts": {},
+      "expected": [
+        {
+          "term": "burnout",
+          "pool": "keywords",
+          "query": "",
+          "empty": true
+        }
+      ]
+    }
+  ],
+  "overlapCases": [
+    {
+      "name": "both sides are parenthesised",
+      "a": "a OR b",
+      "b": "c",
+      "expected": "(a OR b) AND (c)"
+    },
+    {
+      "name": "a multi-line query is flattened",
+      "a": "x\nAND y",
+      "b": "z",
+      "expected": "(x AND y) AND (z)"
+    },
+    {
+      "name": "an empty side yields no query",
+      "a": "",
+      "b": "z",
+      "expected": ""
+    }
+  ]
+}

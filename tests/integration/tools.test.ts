@@ -215,6 +215,58 @@ test("REGRESSION: a fetch that REJECTS (no readable status) is still retried onc
   assert.equal(mock.callsMatching("esearch.fcgi").length, 2, "exactly one retry, not a loop");
 });
 
+// ── Tuning ladder via compare_queries ───────────────────────────────────────
+
+test("compare_queries can generate the tuning ladder from a pool", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["1"], 10) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "1" }]) },
+  ]);
+  const r = payload(await call("reviewseed_compare_queries", {
+    source: "pubmed",
+    autoFrom: { pool: { keywords: ["a", "b"], mesh: ["C"], eric: [], queries: [], ericQueries: [], ctQueries: [] } },
+  }));
+  const labels = r.comparison.map((c: any) => c.label);
+  assert.equal(labels[0], "As built", "the baseline must be first");
+  assert.ok(labels.includes("Subject headings only"));
+  assert.ok(labels.includes("Free text only"));
+  assert.equal(r.comparison.length, 6, "six rungs for a pool with two keywords and a heading");
+});
+
+test("compare_queries reports rungs it could not build, rather than dropping them", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["1"], 10) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "1" }]) },
+  ]);
+  const r = payload(await call("reviewseed_compare_queries", {
+    source: "pubmed",
+    autoFrom: { pool: { keywords: ["only"], mesh: [], eric: [], queries: [], ericQueries: [], ctQueries: [] } },
+  }));
+  assert.ok(r.skipped.length >= 2, "a single-keyword pool cannot build most rungs");
+  for (const s of r.skipped) assert.ok(s.reason.length > 15, `${s.key} was dropped without a reason`);
+});
+
+test("compare_queries still accepts hand-written variants", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["1"], 5) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "1" }]) },
+  ]);
+  const r = payload(await call("reviewseed_compare_queries", {
+    source: "pubmed",
+    queries: [{ label: "tight", query: "a AND b" }, { label: "broad", query: "a OR b" }],
+  }));
+  assert.deepEqual(r.comparison.map((c: any) => c.label), ["tight", "broad"]);
+  assert.equal(r.skipped, undefined, "nothing was skipped, so the field is absent");
+});
+
+test("compare_queries refuses a single variant, and says how to fix it", async () => {
+  const r = payload(await call("reviewseed_compare_queries", {
+    source: "pubmed",
+    autoFrom: { pool: { keywords: [], mesh: ["Only"], eric: [], queries: [], ericQueries: [], ctQueries: [] } },
+  }));
+  assert.match(r.error, /at least two variants/);
+});
+
 // ── Terminology drift ───────────────────────────────────────────────────────
 
 test("terminology_drift flags a heading that cannot reach the searched years", async () => {

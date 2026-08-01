@@ -23,6 +23,7 @@ import { applyHedge, getHedge, HEDGE_CAVEAT, HEDGES, hedgesFor } from "./server/
 import { buildReceipt, diffReceipts } from "./server/receipt.js";
 import { dedupeRecords, prismaCounts, toBibtex, toCsv, toRis } from "./server/export.js";
 import { buildDriftReport } from "./server/drift.js";
+import { buildQueryVariants } from "./server/variants.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -298,10 +299,37 @@ export function createServer(): McpServer {
       queries: z.array(z.object({
         label: z.string().describe('Short name for this variant, e.g. "tight" or "broad"'),
         query: z.string(),
-      })).min(2).max(6),
+      })).max(6).default([])
+        .describe("Hand-written variants. Omit and pass `autoFrom` to have the tuning ladder generated instead."),
+      autoFrom: z.object({
+        pool: poolSchema,
+        kwFields: kwFieldsSchema,
+        booleanOpts: z.object({
+          kwOp: z.enum(["OR", "AND"]).default("OR"),
+          vocabOp: z.enum(["OR", "AND"]).default("OR"),
+          joinOp: z.enum(["AND", "OR"]).default("AND"),
+        }).default({}),
+      }).optional()
+        .describe("Generate the standard tuning ladder from a term pool: as-built, headings-only, free-text-only, " +
+                  "broadened to all fields, narrowed to titles, and keywords AND'd. Rungs that cannot differ from " +
+                  "the baseline are reported under `skipped` with a reason rather than dropped."),
       sampleSize: z.number().int().min(5).max(50).default(20).describe("Top-ranked ids per variant to sample for uniqueness (ignored for trials, fixed at 10)"),
     },
-    async ({ source, queries, sampleSize }) => {
+    async ({ source, queries, autoFrom, sampleSize }) => {
+      let skipped: Array<{ key: string; label: string; reason: string }> = [];
+      if (autoFrom) {
+        const v = buildQueryVariants(autoFrom.pool, autoFrom.kwFields, autoFrom.booleanOpts, source);
+        skipped = v.skipped;
+        // Cap at the tool's own limit, and say so rather than truncating quietly.
+        queries = v.variants.slice(0, 6).map(x => ({ label: x.label, query: x.query }));
+        if (v.variants.length > 6) {
+          skipped = [...skipped, { key: "over-limit", label: "Beyond six variants",
+            reason: `${v.variants.length - 6} further rung(s) were not run: this tool compares at most six at once.` }];
+        }
+      }
+      if (queries.length < 2) {
+        return errorResult(new Error("Need at least two variants to compare. Pass `queries` with two or more, or `autoFrom` with a pool that yields more than one rung."));
+      }
       // Sequential, not concurrent: firing 2-6 esearch+efetch pipelines at
       // once against NCBI (whose unauthenticated cap is a tight 3 req/sec)
       // measurably increases 429s beyond what a solo reviewseed_search call
@@ -330,7 +358,7 @@ export function createServer(): McpServer {
         sampled: r.ids.length,
         uniqueToThisVariant: r.ids.filter(id => !idSets.some((s, j) => j !== i && s.has(id))),
       }));
-      return textResult({ comparison });
+      return textResult(skipped.length ? { comparison, skipped } : { comparison });
     },
   );
 

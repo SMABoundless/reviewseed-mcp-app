@@ -37,6 +37,7 @@ Claude / Host
             ├─ reviewseed_vocab_details      → scope note, entry terms, broader/narrower
             ├─ reviewseed_author_search      → everything an author published, per source
             ├─ reviewseed_assemble_query     → Boolean or 10-framework string, in the target's syntax
+            ├─ reviewseed_compare_queries    → variant totals + overlap; `autoFrom` builds the tuning ladder
             ├─ reviewseed_translate_query    → emit-only syntax for Ovid/Embase/Scopus/WoS/EBSCO/ProQuest/Cochrane
             ├─ reviewseed_validate_recall    → known-item test + leave-one-out term criticality
             ├─ reviewseed_evidence_map       → concept × concept intersection counts (scoping/mapping gaps)
@@ -59,6 +60,7 @@ Claude / Host
 | `reviewseed_vocab_details` | UI or Claude | Scope note, entry terms, broader/narrower for a heading |
 | `reviewseed_author_search` | UI or Claude | Everything an author published in the chosen source |
 | `reviewseed_assemble_query` | UI or Claude | Build a Boolean or framework string from a term pool — headless-friendly |
+| `reviewseed_compare_queries` | Claude | Run 2–6 variants against one source: real totals plus sample-unique ids. Pass `autoFrom` with a pool to generate the standard **tuning ladder** — as built, headings only, free text only, broadened, narrowed, AND'd — with unbuildable rungs reported, not dropped |
 | `reviewseed_translate_query` | Claude | Translate a pool into seven platforms ReviewSeed **cannot** query. Emit-only and therefore untested — always pass the caveat on |
 | `reviewseed_validate_recall` | Claude | Does the query retrieve the seeds it was built from? Reports misses, and optionally which terms are load-bearing for recall |
 | `reviewseed_evidence_map` | Claude | Concept × concept counts for a scoping/mapping review — read the zeros, not the big numbers |
@@ -84,6 +86,8 @@ server/
                         pure, shared between the server tool and the browser UI's live preview
   protocol.ts           buildSearchProtocol: the serializable record every report reads
                         (pool + selections + provenance + search log), pure, injected clock
+  variants.ts           the tuning ladder: neighbouring versions of a query, built by the real
+                        query builder, with unbuildable rungs reported rather than dropped
   drift.ts              MeSH dateIntroduced/historyNote -> terminology-gap verdicts. The
                         predicates older docs name (dateCreated, previousIndexing) do NOT exist
   export.ts             RIS/BibTeX/CSV for screening tools — CRLF, two-space RIS tags, braced
