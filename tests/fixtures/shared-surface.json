@@ -532,6 +532,114 @@
     "ms": 4000,
     "notice": "NLM's MeSH service is responding slowly — this is upstream, not ReviewSeed."
   },
+  "lint": {
+    "domains": [
+      {
+        "key": "translation",
+        "label": "Translation of the research question"
+      },
+      {
+        "key": "operators",
+        "label": "Boolean and proximity operators"
+      },
+      {
+        "key": "subject-headings",
+        "label": "Subject headings"
+      },
+      {
+        "key": "text-word",
+        "label": "Text word searching"
+      },
+      {
+        "key": "syntax",
+        "label": "Spelling, syntax and line numbers"
+      },
+      {
+        "key": "limits",
+        "label": "Limits and filters"
+      }
+    ],
+    "rules": [
+      {
+        "id": "unbalanced-parentheses",
+        "domain": "syntax",
+        "severity": "error",
+        "title": "Parentheses don't balance"
+      },
+      {
+        "id": "unbalanced-quotes",
+        "domain": "syntax",
+        "severity": "error",
+        "title": "Quotation marks don't balance"
+      },
+      {
+        "id": "empty-group",
+        "domain": "syntax",
+        "severity": "error",
+        "title": "Empty parenthesised group"
+      },
+      {
+        "id": "dangling-operator",
+        "domain": "operators",
+        "severity": "error",
+        "title": "Query begins or ends with an operator"
+      },
+      {
+        "id": "lowercase-operator",
+        "domain": "operators",
+        "severity": "warning",
+        "title": "Lowercase Boolean operator"
+      },
+      {
+        "id": "truncation-in-phrase",
+        "domain": "text-word",
+        "severity": "warning",
+        "title": "Truncation inside a quoted phrase"
+      },
+      {
+        "id": "field-tag-noop",
+        "domain": "text-word",
+        "severity": "warning",
+        "title": "Field tag does nothing on this source"
+      },
+      {
+        "id": "hyphenated-term",
+        "domain": "text-word",
+        "severity": "info",
+        "title": "Hyphenated term may need spelling variants"
+      },
+      {
+        "id": "very-short-keyword",
+        "domain": "text-word",
+        "severity": "info",
+        "title": "Very short keyword"
+      },
+      {
+        "id": "stopword-in-phrase",
+        "domain": "text-word",
+        "severity": "info",
+        "title": "Stopword inside a quoted phrase"
+      },
+      {
+        "id": "no-controlled-vocabulary",
+        "domain": "subject-headings",
+        "severity": "info",
+        "title": "No subject headings used"
+      },
+      {
+        "id": "no-keywords",
+        "domain": "translation",
+        "severity": "info",
+        "title": "No free-text terms used"
+      },
+      {
+        "id": "limits-need-justification",
+        "domain": "limits",
+        "severity": "info",
+        "title": "Applied limits need a stated rationale"
+      }
+    ]
+  },
   "translation": {
     "caveat": "Emit-only: ReviewSeed cannot run these platforms, so these strings are UNTESTED. Paste into the platform's own search box and verify the result count before relying on it.",
     "platforms": [

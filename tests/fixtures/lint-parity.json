@@ -1,0 +1,158 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for the search lint / PRESS self-audit (§3.10).",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: lintQuery in server/lint.ts (tests/unit/lint-parity.test.ts)",
+    "  - Website: index.html's page-global lintQuery (verify-parity.mjs)",
+    "",
+    "BEHAVIOR fixture. Each case pins which rules fire for a given input, and the",
+    "list is compared exactly — a rule firing where the fixture says it shouldn't is a",
+    "false positive, which in a peer-review audit costs the user credibility. That's",
+    "why `no findings on a well-formed query` is the first case: it guards the",
+    "property that matters most.",
+    "",
+    "Severity order is error, warning, info; ties break on rule id then subject, so",
+    "the two repos agree on ordering and reruns are stable.",
+    "",
+    "The rule CATALOGUE (ids, domains, severities) is pinned separately in the",
+    "generated shared-surface.json, so neither repo can add or reclassify a rule",
+    "without the other going red."
+  ],
+  "version": 1,
+  "cases": [
+    {
+      "name": "no findings on a well-formed query from our own builders",
+      "input": { "source": "pubmed", "query": "\"asthma\"[tiab] AND \"Asthma\"[MeSH Terms]" },
+      "expected": []
+    },
+    {
+      "name": "unclosed parenthesis",
+      "input": { "source": "pubmed", "query": "(\"asthma\"[tiab] AND \"Asthma\"[MeSH Terms]" },
+      "expected": [{ "rule": "unbalanced-parentheses", "severity": "error", "domain": "syntax" }]
+    },
+    {
+      "name": "a closing parenthesis before its opening one",
+      "input": { "source": "pubmed", "query": "\"asthma\"[tiab]) AND (\"Asthma\"[MeSH Terms]" },
+      "expected": [{ "rule": "unbalanced-parentheses", "severity": "error", "domain": "syntax" }]
+    },
+    {
+      "name": "parentheses inside a quoted phrase are content, not structure",
+      "input": { "source": "pubmed", "query": "\"asthma (childhood)\"[tiab]" },
+      "expected": []
+    },
+    {
+      "name": "unclosed quotation mark",
+      "input": { "source": "pubmed", "query": "\"asthma[tiab]" },
+      "expected": [{ "rule": "unbalanced-quotes", "severity": "error", "domain": "syntax" }]
+    },
+    {
+      "name": "empty group",
+      "input": { "source": "pubmed", "query": "\"asthma\"[tiab] AND ()" },
+      "expected": [{ "rule": "empty-group", "severity": "error", "domain": "syntax" }]
+    },
+    {
+      "name": "trailing operator",
+      "input": { "source": "pubmed", "query": "\"asthma\"[tiab] AND" },
+      "expected": [{ "rule": "dangling-operator", "severity": "error", "domain": "operators" }]
+    },
+    {
+      "name": "leading operator",
+      "input": { "source": "pubmed", "query": "OR \"asthma\"[tiab]" },
+      "expected": [{ "rule": "dangling-operator", "severity": "error", "domain": "operators" }]
+    },
+    {
+      "name": "lowercase operator — fine in PubMed, a search term in Ovid",
+      "input": { "source": "pubmed", "query": "asthma and inhaler" },
+      "expected": [{ "rule": "lowercase-operator", "severity": "warning", "domain": "operators", "subject": "and" }]
+    },
+    {
+      "name": "the word 'and' inside a quoted phrase is not an operator",
+      "input": { "source": "pubmed", "query": "\"signs and symptoms\"[tiab]" },
+      "expected": [{ "rule": "stopword-in-phrase", "severity": "info", "domain": "text-word", "subject": "signs and symptoms" }]
+    },
+    {
+      "name": "truncation inside a quoted phrase is searched literally",
+      "input": { "source": "pubmed", "query": "\"heart attack*\"[tiab]" },
+      "expected": [{ "rule": "truncation-in-phrase", "severity": "warning", "domain": "text-word", "subject": "heart attack*" }]
+    },
+    {
+      "name": "truncation on an unquoted word is fine",
+      "input": { "source": "pubmed", "query": "asthma*[tiab]" },
+      "expected": []
+    },
+    {
+      "name": "stopword in a phrase, reported as usually harmless",
+      "input": { "source": "pubmed", "query": "\"quality of life\"[tiab]" },
+      "expected": [{ "rule": "stopword-in-phrase", "severity": "info", "domain": "text-word", "subject": "quality of life" }]
+    },
+    {
+      "name": "a single-word quoted term cannot have a stopword problem",
+      "input": { "source": "pubmed", "query": "\"the\"[tiab]" },
+      "expected": []
+    },
+    {
+      "name": "hyphenated and very short keywords, and a no-op field tag on trials",
+      "input": {
+        "source": "trials",
+        "query": "x",
+        "pool": { "keywords": ["e-health", "MI"], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+        "kwFields": { "MI": "ab" }
+      },
+      "expected": [
+        { "rule": "field-tag-noop", "severity": "warning", "domain": "text-word", "subject": "MI" },
+        { "rule": "hyphenated-term", "severity": "info", "domain": "text-word", "subject": "e-health" },
+        { "rule": "no-controlled-vocabulary", "severity": "info", "domain": "subject-headings" },
+        { "rule": "very-short-keyword", "severity": "info", "domain": "text-word", "subject": "MI" }
+      ]
+    },
+    {
+      "name": "the abstract tag is only a no-op on trials, not on PubMed",
+      "input": {
+        "source": "pubmed",
+        "query": "x",
+        "pool": { "keywords": ["burnout"], "mesh": ["Burnout, Professional"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+        "kwFields": { "burnout": "ab" }
+      },
+      "expected": []
+    },
+    {
+      "name": "headings only: the missing recall is named, not condemned",
+      "input": {
+        "source": "pubmed",
+        "query": "\"Asthma\"[MeSH Terms]",
+        "pool": { "keywords": [], "mesh": ["Asthma"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] }
+      },
+      "expected": [{ "rule": "no-keywords", "severity": "info", "domain": "translation" }]
+    },
+    {
+      "name": "an empty pool triggers neither translation note",
+      "input": {
+        "source": "pubmed",
+        "query": "",
+        "pool": { "keywords": [], "mesh": [], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] }
+      },
+      "expected": []
+    },
+    {
+      "name": "applied limits ask for a rationale",
+      "input": { "source": "pubmed", "query": "x", "filterSummary": ["Language: English"] },
+      "expected": [{ "rule": "limits-need-justification", "severity": "info", "domain": "limits" }]
+    },
+    {
+      "name": "errors sort ahead of warnings and info",
+      "input": {
+        "source": "pubmed",
+        "query": "(\"heart attack*\"[tiab] and \"quality of life\"[tiab]",
+        "filterSummary": ["Language: English"]
+      },
+      "expected": [
+        { "rule": "unbalanced-parentheses", "severity": "error", "domain": "syntax" },
+        { "rule": "lowercase-operator", "severity": "warning", "domain": "operators", "subject": "and" },
+        { "rule": "truncation-in-phrase", "severity": "warning", "domain": "text-word", "subject": "heart attack*" },
+        { "rule": "limits-need-justification", "severity": "info", "domain": "limits" },
+        { "rule": "stopword-in-phrase", "severity": "info", "domain": "text-word", "subject": "quality of life" }
+      ]
+    }
+  ]
+}

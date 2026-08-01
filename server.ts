@@ -18,6 +18,7 @@ import {
 import { withMatchedVia } from "./server/match.js";
 import { isSlowLookup, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
 import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
+import { lintQuery } from "./server/lint.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
@@ -365,6 +366,33 @@ export function createServer(): McpServer {
           ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
           : buildBooleanQuery(pool, kwFields, booleanOpts, source);
         return textResult({ query });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Search lint / PRESS self-audit ─────────────────────────────────────────
+  server.tool(
+    "reviewseed_lint_query",
+    "Mechanically audit a search string before it goes to peer review, and map every finding onto the six PRESS " +
+    "domains (translation, operators, subject headings, text words, syntax, limits). Catches things that break or " +
+    "silently mis-run a search — unbalanced parentheses or quotes, a dangling operator, truncation inside a quoted " +
+    "phrase, a field tag that does nothing on the chosen source — plus judgement notes like headings-without-keywords. " +
+    "Offline and deterministic. It also returns `notChecked`: what it deliberately does NOT assess, including whether " +
+    "a heading is already covered by exploding a broader one (needs the hierarchy) and whether a limit is justified " +
+    "(needs you). Severity means something: `error` = cannot run as written, `warning` = will run but not as intended, " +
+    "`info` = a defensible choice worth stating. Report the findings AND the notChecked list; a clean lint is not a " +
+    "peer review.",
+    {
+      source: sourceEnum,
+      query: z.string().describe("The assembled search string to audit"),
+      pool: poolSchema.optional().describe("Pass the term pool for the term-level checks (hyphens, short terms, field tags)"),
+      kwFields: kwFieldsSchema,
+      filterSummary: z.array(z.string()).default([])
+        .describe("Limits already applied, in prose — PRESS asks for each to be justified"),
+    },
+    async ({ source, query, pool, kwFields, filterSummary }) => {
+      try {
+        return textResult(lintQuery({ source, query, pool, kwFields, filterSummary }));
       } catch (e) { return errorResult(e); }
     },
   );

@@ -30,6 +30,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_author_search",
     "reviewseed_compare_queries",
     "reviewseed_evidence_map",
+    "reviewseed_lint_query",
     "reviewseed_lookup",
     "reviewseed_open",
     "reviewseed_search",
@@ -47,7 +48,7 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
   }
 });
@@ -208,6 +209,49 @@ test("REGRESSION: a fetch that REJECTS (no readable status) is still retried onc
   const r = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
   assert.equal(r.articles.length, 1, "the retry should have recovered the search");
   assert.equal(mock.callsMatching("esearch.fcgi").length, 2, "exactly one retry, not a loop");
+});
+
+// ── Search lint ─────────────────────────────────────────────────────────────
+
+test("lint_query is clean on a well-formed string and still reports what it can't check", async () => {
+  const r = payload(await call("reviewseed_lint_query", {
+    source: "pubmed", query: '"asthma"[tiab] AND "Asthma"[MeSH Terms]',
+  }));
+  assert.equal(r.clean, true);
+  assert.deepEqual(r.findings, []);
+  assert.ok(r.notChecked.length >= 3, "a clean lint must still say what it did not assess");
+});
+
+test("lint_query flags what breaks a search, ordered errors first", async () => {
+  const r = payload(await call("reviewseed_lint_query", {
+    source: "pubmed", query: '("heart attack*"[tiab] and "quality of life"[tiab]',
+  }));
+  assert.equal(r.findings[0].severity, "error");
+  assert.equal(r.findings[0].rule, "unbalanced-parentheses");
+  const rules = r.findings.map((f: any) => f.rule);
+  assert.ok(rules.includes("lowercase-operator"));
+  assert.ok(rules.includes("truncation-in-phrase"));
+  assert.equal(r.counts.error, 1);
+});
+
+test("lint_query maps every finding onto a PRESS domain, all six present", async () => {
+  const r = payload(await call("reviewseed_lint_query", { source: "pubmed", query: "x" }));
+  assert.deepEqual(r.byDomain.map((d: any) => d.domain),
+    ["translation", "operators", "subject-headings", "text-word", "syntax", "limits"]);
+});
+
+test("lint_query's term-level checks need the pool, and stay source-aware", async () => {
+  const pool = { keywords: ["MI"], mesh: [], eric: [], queries: [], ericQueries: [], ctQueries: [] };
+  const trials = payload(await call("reviewseed_lint_query", {
+    source: "trials", query: "x", pool, kwFields: { MI: "ab" },
+  }));
+  assert.ok(trials.findings.some((f: any) => f.rule === "field-tag-noop"),
+    "ClinicalTrials.gov has no abstract field, so the ab tag does nothing there");
+  const pubmed = payload(await call("reviewseed_lint_query", {
+    source: "pubmed", query: "x", pool, kwFields: { MI: "ab" },
+  }));
+  assert.ok(!pubmed.findings.some((f: any) => f.rule === "field-tag-noop"),
+    "PubMed does have an abstract field — flagging it there would be a false positive");
 });
 
 // ── Evidence gap map ────────────────────────────────────────────────────────
