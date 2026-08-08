@@ -401,7 +401,10 @@ test("export_records names the .bib extension for BibTeX, not .bibtex", async ()
 
 test("export_records CSV starts with a header row", async () => {
   const r = payload(await call("reviewseed_export_records", { format: "csv", records: EXPORT_RECORDS }));
-  assert.ok(r.content.startsWith("id,type,title,authors,journal,year,doi,keywords,url\r\n"));
+  assert.ok(r.content.startsWith("id,type,title,authors,journal,year,doi,keywords,url,libkey\r\n"));
+  // Universal LibKey form: every reader resolves to their own institution.
+  assert.match(r.content, /https:\/\/libkey\.io\/1(,|\r)/);
+  assert.ok(!/libkey\.io\/libraries\//.test(r.content), "must not pin one library");
 });
 
 test("export_records can be told not to deduplicate, and says so", async () => {

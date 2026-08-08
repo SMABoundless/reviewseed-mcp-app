@@ -18,6 +18,7 @@
 //
 // The website's PubMed records omit `src` and `url` (its render layer fills them
 // in) — a documented divergence — so nothing here may assume those exist.
+import { libkeyUrl } from "./libkey.js";
 import type { Article, Source } from "./types.js";
 
 /** Records as they arrive from any of the three adapters, with optional extras. */
@@ -120,7 +121,12 @@ export function toBibtex(records: ExportRecord[], source?: Source): string {
 }
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
-export const CSV_COLUMNS = ["id", "type", "title", "authors", "journal", "year", "doi", "keywords", "url"] as const;
+// `libkey` is the last column: a working full-text route that survives into a
+// spreadsheet. Universal form, so each reader resolves to their OWN institution.
+// Deliberately absent from RIS and BibTeX — reference managers and screening
+// tools use their own link resolver, and a second UR line would compete with the
+// canonical URL.
+export const CSV_COLUMNS = ["id", "type", "title", "authors", "journal", "year", "doi", "keywords", "url", "libkey"] as const;
 
 /** RFC 4180: quote when the value holds a comma, quote or newline; double quotes. */
 export function csvCell(value: string): string {
@@ -141,6 +147,7 @@ export function toCsv(records: ExportRecord[], source?: Source): string {
       r.doi ?? "",
       [...(r.keywords ?? []), ...(r.mesh ?? []), ...(r.eric ?? [])].join("; "),
       r.url ?? "",
+      libkeyUrl(r, source) ?? "",
     ].map(csvCell).join(","));
   }
   // Trailing newline: some parsers drop the last row without it.

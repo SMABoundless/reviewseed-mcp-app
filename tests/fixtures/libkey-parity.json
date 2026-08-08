@@ -1,0 +1,82 @@
+{
+  "_comment": [
+    "CANONICAL cross-repo fixtures for LibKey.io article links.",
+    "",
+    "Run through BOTH implementations:",
+    "  - MCP app: server/libkey.ts (tests/unit/libkey-parity.test.ts)",
+    "  - Website: index.html's page-global libkeyUrl (verify-parity.mjs)",
+    "",
+    "THE LOAD-BEARING CASE is `never embeds a library id`. Third Iron's",
+    "library-specific form overrides a reader's own affiliation, so hard-coding one",
+    "institution on a site open to the world would hand every visitor the wrong",
+    "library's holdings. Every URL here is the universal form.",
+    "",
+    "The other rule with teeth: LibKey accepts only DOIs and PMIDs. ERIC accessions",
+    "and NCT ids are not identifiers it knows, and ERIC's API exposes no DOI at all,",
+    "so those records must yield null and the UI must render nothing — a link that",
+    "dead-ends is worse than no link."
+  ],
+  "version": 1,
+  "cases": [
+    {
+      "name": "a PubMed record links by PMID",
+      "record": { "src": "pubmed", "pmid": "31234567", "doi": "" },
+      "expected": "https://libkey.io/31234567"
+    },
+    {
+      "name": "PMID is preferred over DOI for a PubMed record",
+      "record": { "src": "pubmed", "pmid": "31234567", "doi": "10.1/abc" },
+      "expected": "https://libkey.io/31234567"
+    },
+    {
+      "name": "a website-shaped record with no src is still treated as PubMed",
+      "record": { "pmid": "29876543", "doi": "10.1/xyz" },
+      "expected": "https://libkey.io/29876543"
+    },
+    {
+      "name": "an ERIC journal accession is not a LibKey identifier",
+      "record": { "src": "eric", "pmid": "EJ1172285", "doi": "" },
+      "expected": null
+    },
+    {
+      "name": "an ERIC document accession is not a LibKey identifier",
+      "record": { "src": "eric", "pmid": "ED605432" },
+      "expected": null
+    },
+    {
+      "name": "a trial registration is not a LibKey identifier",
+      "record": { "src": "trials", "pmid": "NCT04280705" },
+      "expected": null
+    },
+    {
+      "name": "an ERIC record that somehow carries a DOI links by DOI",
+      "record": { "src": "eric", "pmid": "EJ1172285", "doi": "10.1/eric-doi" },
+      "expected": "https://libkey.io/10.1/eric-doi"
+    },
+    {
+      "name": "a DOI arriving as a doi.org URL is reduced to its bare form",
+      "record": { "src": "eric", "pmid": "EJ1", "doi": "https://doi.org/10.1/Abc" },
+      "expected": "https://libkey.io/10.1/Abc"
+    },
+    {
+      "name": "a dx.doi.org prefix is stripped too",
+      "record": { "src": "eric", "pmid": "EJ1", "doi": "http://dx.doi.org/10.1/x" },
+      "expected": "https://libkey.io/10.1/x"
+    },
+    {
+      "name": "a doi: prefix is stripped",
+      "record": { "src": "eric", "pmid": "EJ1", "doi": "doi:10.1/y" },
+      "expected": "https://libkey.io/10.1/y"
+    },
+    {
+      "name": "a record with neither a PMID nor a DOI has no link",
+      "record": { "src": "eric", "pmid": "", "doi": "" },
+      "expected": null
+    },
+    {
+      "name": "a whitespace-only DOI is not a link",
+      "record": { "src": "eric", "pmid": "EJ1", "doi": "   " },
+      "expected": null
+    }
+  ]
+}

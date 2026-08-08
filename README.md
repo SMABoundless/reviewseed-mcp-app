@@ -88,6 +88,8 @@ server/
                         pure, shared between the server tool and the browser UI's live preview
   protocol.ts           buildSearchProtocol: the serializable record every report reads
                         (pool + selections + provenance + search log), pure, injected clock
+  libkey.ts             LibKey.io full-text URLs. Universal form only — the library-pinned
+                        form would override each reader's own institution
   crosswalk.ts          MeSH -> ERIC candidates with tiered confidence. Only a shared label rates
                         `strong`: ERIC folds Mindfulness into Metacognition and Asthma into Diseases
   variants.ts           the tuning ladder: neighbouring versions of a query, built by the real
