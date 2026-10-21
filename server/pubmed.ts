@@ -1,12 +1,18 @@
 import { DOMParser } from "@xmldom/xmldom";
-import { createLimiter } from "./rate-limit.js";
+import { createLimiter, paceMs } from "./rate-limit.js";
 import type { AdvField, Article, SearchResult } from "./types.js";
 
 const PUBMED_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 // NCBI E-utilities policy requires `tool` and `email` so abusive traffic can
 // be traced back to a maintainer instead of the IP getting cold-blocked.
-const NCBI_TOOL_PARAMS = `tool=ReviewSeedMCP&email=${encodeURIComponent("smadams@northwestern.edu")}`;
-const limit = createLimiter();
+// An optional NCBI_API_KEY lifts the cap from 3 to 10 req/sec. Server-side
+// only — the website can't do this, since a key shipped to a browser is public.
+// Unset, behavior is exactly as before.
+const NCBI_API_KEY = process.env.NCBI_API_KEY?.trim() || "";
+const NCBI_TOOL_PARAMS = `tool=ReviewSeedMCP&email=${encodeURIComponent("smadams@northwestern.edu")}` +
+  (NCBI_API_KEY ? `&api_key=${encodeURIComponent(NCBI_API_KEY)}` : "");
+// ~9/sec with a key: the same small margin under NCBI's cap as the unkeyed pace.
+const limit = createLimiter(paceMs(NCBI_API_KEY ? 110 : 350));
 
 // NCBI's unauthenticated cap is 3 req/sec; our limiter paces starts at ~2.85/sec
 // with zero margin, so an occasional 429 is expected under sustained use (e.g.

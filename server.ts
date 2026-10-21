@@ -21,6 +21,7 @@ import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import { lintQuery } from "./server/lint.js";
 import { applyHedge, getHedge, HEDGE_CAVEAT, HEDGES, hedgesFor } from "./server/hedges.js";
 import { buildReceipt, diffReceipts } from "./server/receipt.js";
+import { buildSearchProtocol, buildTermYield, type TermSources } from "./server/protocol.js";
 import { dedupeRecords, prismaCounts, toBibtex, toCsv, toRis } from "./server/export.js";
 import { buildDriftReport } from "./server/drift.js";
 import { buildQueryVariants } from "./server/variants.js";
@@ -36,6 +37,12 @@ const DIST_DIR = import.meta.dirname.endsWith("dist")
   ? import.meta.dirname
   : path.join(import.meta.dirname, "dist");
 const RESOURCE_URI = "ui://reviewseed/mcp-app.html";
+const SERVER_VERSION = "2.0.0";
+// Every tool only reads: none writes, deletes or sends anything anywhere. The
+// split is whether it reaches an outside API (PubMed, NLM, ERIC,
+// ClinicalTrials.gov) or works purely on what it was given.
+const READS_REMOTE = { readOnlyHint: true, openWorldHint: true } as const;
+const READS_LOCAL = { readOnlyHint: true, openWorldHint: false } as const;
 const SOURCES = ["pubmed", "eric", "trials"] as const;
 const SOURCE_LABEL: Record<Source, string> = { pubmed: "PubMed", eric: "ERIC", trials: "ClinicalTrials.gov" };
 
@@ -64,7 +71,7 @@ function errorResult(e: unknown) {
 }
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "ReviewSeed", version: "2.0.0" });
+  const server = new McpServer({ name: "ReviewSeed", version: SERVER_VERSION });
 
   // ── Trigger tool — Claude calls this to open the UI ──────────────────────────
   registerAppTool(
@@ -82,6 +89,7 @@ export function createServer(): McpServer {
         source: sourceEnum.optional().describe("Pre-select a source (defaults to PubMed) instead of opening blank"),
         query: z.string().optional().describe("Pre-fill and immediately run this search — opens straight to results instead of a blank panel"),
       },
+      annotations: READS_LOCAL,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async ({ source, query }) => ({
@@ -135,6 +143,7 @@ export function createServer(): McpServer {
           "cross-reference the full descriptor list by hand to see why it matched.",
         ),
       },
+      annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async ({ source, query, page, pageSize, matchTerms }) => {
@@ -158,6 +167,7 @@ export function createServer(): McpServer {
         source: sourceEnum,
         text: z.string().describe("Pasted reference list"),
       },
+      annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async ({ source, text }) => {
@@ -191,6 +201,7 @@ export function createServer(): McpServer {
         run: z.boolean().default(true).describe("Also execute the assembled query against the source"),
         page: z.number().int().min(1).max(5).default(1),
       },
+      annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async ({ source, rows, run, page }) => {
@@ -223,6 +234,7 @@ export function createServer(): McpServer {
       vocab: z.enum(["mesh", "eric"]),
       query: z.string(),
     },
+    READS_REMOTE,
     async ({ vocab, query }) => {
       try {
         if (vocab === "mesh") {
@@ -250,6 +262,7 @@ export function createServer(): McpServer {
       label: z.string().describe("The canonical heading/descriptor label (not a synonym)"),
       id: z.string().optional().describe("MeSH descriptor id, if known from a prior vocab_search result — enables the scope note"),
     },
+    READS_REMOTE,
     async ({ vocab, label, id }) => {
       try {
         if (vocab === "mesh") {
@@ -275,6 +288,7 @@ export function createServer(): McpServer {
       name: z.string(),
       page: z.number().int().min(1).max(5).default(1),
     },
+    READS_REMOTE,
     async ({ source, name, page }) => {
       try {
         const r = source === "eric" ? await ericAuthorSearch(name, page, 10)
@@ -316,6 +330,7 @@ export function createServer(): McpServer {
                   "the baseline are reported under `skipped` with a reason rather than dropped."),
       sampleSize: z.number().int().min(5).max(50).default(20).describe("Top-ranked ids per variant to sample for uniqueness (ignored for trials, fixed at 10)"),
     },
+    READS_REMOTE,
     async ({ source, queries, autoFrom, sampleSize }) => {
       let skipped: Array<{ key: string; label: string; reason: string }> = [];
       if (autoFrom) {
@@ -388,6 +403,7 @@ export function createServer(): McpServer {
         buckets: z.record(z.string(), z.array(z.string())).describe("Bucket key -> term labels placed in that bucket"),
       }).optional(),
     },
+    READS_LOCAL,
     async ({ source, pool, kwFields, mode, booleanOpts, framework }) => {
       try {
         if (mode === "framework" && !framework?.key) {
@@ -421,6 +437,7 @@ export function createServer(): McpServer {
           .describe("Its NLM entry terms, if known — they widen the search for a counterpart"),
       })).min(1).max(30),
     },
+    READS_LOCAL,
     async ({ headings }) => {
       try {
         const thesaurus = await ericThesaurusAll();
@@ -451,6 +468,7 @@ export function createServer(): McpServer {
       coverageFrom: z.number().int().min(1800).max(2200).nullable().default(null)
         .describe("First year the search covers; null means no date limit"),
     },
+    READS_REMOTE,
     async ({ headings, coverageFrom }) => {
       try {
         const inputs = [];
@@ -490,6 +508,7 @@ export function createServer(): McpServer {
         .default([]).describe("The protocol's search log, to compute PRISMA identified counts"),
       dedupe: z.boolean().default(true),
     },
+    READS_LOCAL,
     async ({ format, records, source, searchLog, dedupe }) => {
       try {
         const input = records as never[];
@@ -507,6 +526,72 @@ export function createServer(): McpServer {
           dedupeNote: d.note,
           prisma: prismaCounts(searchLog, d.records.length, d.removed),
         });
+      } catch (e) { return errorResult(e); }
+    },
+  );
+
+  // ── Search protocol + term yield ───────────────────────────────────────────
+  // The seam the other report tools read: receipt takes the protocol this
+  // returns. Query string comes from the same builders as assemble_query, so
+  // the two tools can't disagree about what was searched.
+  server.tool(
+    "reviewseed_protocol",
+    "Build the search protocol for a strategy — the citable, PRISMA-S-shaped record of database and platform, query " +
+    "as sent, every pooled term with how it got there, limits, vocabulary editions and the searches run — plus a term " +
+    "yield report: which terms the seed records actually support, which rest on a single record, and the keyword vs " +
+    "controlled-vocabulary balance. Pass the result's `protocol` to reviewseed_receipt to fingerprint the strategy. " +
+    "Provenance is the point: record in `termSources` the ids of the records each term was harvested from (e.g. the " +
+    "PMIDs whose MeSH headings you pooled) and its origin. NEVER invent provenance — a term with no recorded source " +
+    "is honestly reported as uncorroborated, which is a finding, not an error. Likewise only put searches you " +
+    "actually ran, with their real totals, in `searchLog`.",
+    {
+      source: sourceEnum,
+      pool: poolSchema,
+      kwFields: kwFieldsSchema.describe(`Per-keyword field tag; defaults to tiab. ${KW_FIELD_TAGS}`),
+      mode: z.enum(["boolean", "framework"]).default("boolean"),
+      booleanOpts: z.object({
+        kwOp: z.enum(["OR", "AND"]).default("OR"),
+        vocabOp: z.enum(["OR", "AND"]).default("OR"),
+        joinOp: z.enum(["AND", "OR"]).default("AND"),
+      }).default({}),
+      framework: z.object({
+        key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
+        buckets: z.record(z.string(), z.array(z.string())).describe("Bucket key -> term labels placed in that bucket"),
+      }).optional(),
+      selected: z.record(z.string(), z.array(z.string())).optional()
+        .describe("Pool key -> the terms actually used in the query. Omit to mean everything pooled is used"),
+      filters: z.array(z.string()).default([])
+        .describe("Human-readable limits applied, e.g. \"Publication date: 2015-2025\" — PRISMA-S asks you to cite them"),
+      searchLog: z.array(z.object({ at: z.string(), source: sourceEnum, query: z.string(), total: z.number() }))
+        .default([]).describe("Searches actually run, with ISO timestamps and the totals they returned"),
+      termSources: z.record(z.string(), z.record(z.string(), z.object({
+        ids: z.array(z.string()).default([]),
+        from: z.enum(["seed", "vocab", "synonym", "advanced", "facet", "hedge", "manual"]),
+      }))).default({}).describe(
+        "Pool key -> term -> { ids, from }. `ids` are the record ids (PMID / ERIC accession / NCT id) the term came " +
+        "from; `from` is how it entered the pool: seed (harvested from a record), vocab (vocabulary explorer), synonym " +
+        "(entry term / Use-For), advanced, hedge (published filter), manual (typed by the searcher).",
+      ),
+    },
+    READS_LOCAL,
+    async ({ source, pool, kwFields, mode, booleanOpts, framework, selected, filters, searchLog, termSources }) => {
+      try {
+        if (mode === "framework" && !framework?.key) {
+          return errorResult(new Error("mode \"framework\" needs `framework.key` and `buckets`. Call reviewseed_assemble_query in framework mode with no key to list the ten frameworks."));
+        }
+        const query = mode === "framework"
+          ? buildFrameworkQuery(framework!.key, framework!.buckets, pool, kwFields, source)
+          : buildBooleanQuery(pool, kwFields, booleanOpts, source);
+        const protocol = buildSearchProtocol({
+          generatedAt: new Date().toISOString(),
+          tool: { name: "ReviewSeed", version: SERVER_VERSION, surface: "mcp-app" },
+          source, pool, kwFields, mode, query, selected, booleanOpts,
+          framework: mode === "framework" ? framework! : null,
+          filters: { summary: filters },
+          searchLog,
+          termSources: termSources as TermSources,
+        });
+        return textResult({ protocol, termYield: buildTermYield(protocol) });
       } catch (e) { return errorResult(e); }
     },
   );
@@ -534,6 +619,7 @@ export function createServer(): McpServer {
         after: z.record(z.string(), z.unknown()),
       }).optional().describe("Two reviewseed.receipt/1 objects to compare"),
     },
+    READS_LOCAL,
     async ({ protocol, run, diff }) => {
       try {
         if (diff) return textResult(diffReceipts(diff.before as never, diff.after as never));
@@ -561,6 +647,7 @@ export function createServer(): McpServer {
         query: z.string(),
       }).optional().describe("Attach a filter to a query and return the combined string"),
     },
+    READS_LOCAL,
     async ({ source, apply }) => {
       try {
         if (apply) {
@@ -598,6 +685,7 @@ export function createServer(): McpServer {
       filterSummary: z.array(z.string()).default([])
         .describe("Limits already applied, in prose — PRESS asks for each to be justified"),
     },
+    READS_LOCAL,
     async ({ source, query, pool, kwFields, filterSummary }) => {
       try {
         return textResult(lintQuery({ source, query, pool, kwFields, filterSummary }));
@@ -623,6 +711,7 @@ export function createServer(): McpServer {
       })).min(2).max(8),
       kwFields: kwFieldsSchema,
     },
+    READS_REMOTE,
     async ({ source, concepts, kwFields }) => {
       try {
         const cells: Record<string, number | null> = {};
@@ -678,6 +767,7 @@ export function createServer(): McpServer {
       leaveOneOut: z.boolean().default(false)
         .describe("Run the leave-one-out pass. Requires `pool`. One extra search per pooled term."),
     },
+    READS_REMOTE,
     async ({ source, query, seedIds, pool, kwFields, leaveOneOut }) => {
       try {
         // Which seeds does a given string retrieve? One search per string: AND
@@ -776,6 +866,7 @@ export function createServer(): McpServer {
         .default([])
         .describe("Restrict to these platform keys; omit or leave empty for all of them"),
     },
+    READS_LOCAL,
     async ({ pool, kwFields, platforms }) => {
       try {
         const m = buildTranslationMatrix(pool, kwFields);

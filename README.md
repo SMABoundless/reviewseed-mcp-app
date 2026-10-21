@@ -43,6 +43,7 @@ Claude / Host
             ├─ reviewseed_evidence_map       → concept × concept intersection counts (scoping/mapping gaps)
             ├─ reviewseed_lint_query         → PRESS-mapped syntax/quirk audit of a search string
             ├─ reviewseed_hedges             → published study-design filters, with citations
+            ├─ reviewseed_protocol           → PRISMA-S search protocol + which terms the seeds support
             ├─ reviewseed_receipt            → fingerprint a strategy; diff a saved receipt against today
             ├─ reviewseed_export_records     → RIS/BibTeX/CSV for Covidence, Rayyan, Zotero + PRISMA counts
             ├─ reviewseed_terminology_drift   → can a heading even reach the years you're searching?
@@ -67,6 +68,7 @@ Claude / Host
 | `reviewseed_evidence_map` | Claude | Concept × concept counts for a scoping/mapping review — read the zeros, not the big numbers |
 | `reviewseed_lint_query` | Claude | Deterministic audit of a search string, mapped to the six PRESS domains — plus what it deliberately did *not* check |
 | `reviewseed_hedges` | Claude | Published methodological filters (Cochrane trials, NLM systematic reviews, ERIC/CT.gov limits) with publisher, citation and a `validated` flag — attaches one to a query on request |
+| `reviewseed_protocol` | Claude | The citable record of a strategy — database and platform, query as sent, every term with its provenance, limits, vocabulary editions, searches run — plus a term-yield report. Its output is what `reviewseed_receipt` takes |
 | `reviewseed_receipt` | Claude | Fingerprints a strategy for a review update, and diffs a saved receipt against a fresh one — refusing to compare two *different* searches |
 | `reviewseed_export_records` | Claude | RIS / BibTeX / CSV for a screening tool, deduped with the dropped ids listed, plus PRISMA identified counts and the numbers it can't know |
 | `reviewseed_terminology_drift` | Claude | When NLM created each heading, and the earlier heading to use for years before that — a gap in the indexing, not the literature |
@@ -106,7 +108,7 @@ server/
                         plus the list of what it deliberately does NOT check
   translate.ts          emit-only vendor syntax for the 7 platforms ReviewSeed can't query —
                         strings a human pastes, never executed here, so the caveat travels with them
-server.ts               registers all 18 tools + the UI resource
+server.ts               registers all 19 tools + the UI resource
 main.ts                 HTTP (Express) / stdio entry point + REST fallback (/api/search, /api/lookup, /api/vocab)
 src/mcp-app.tsx          the React UI (source switcher, 4 input modes, vocab explorer, both builders)
 ```
@@ -231,7 +233,9 @@ All public, no API key required for standard use:
 - [ERIC](https://eric.ed.gov/?api) (`api.ies.ed.gov/eric/`) — no sort, no DOI field, no author-keyword field.
 - [ClinicalTrials.gov v2](https://clinicaltrials.gov/data-api/api) — Essie `AREA[...]` query syntax, token-based paging.
 
-To add an NCBI API key, set `NCBI_API_KEY` and pass it through in `server/pubmed.ts`'s `NCBI_TOOL_PARAMS`.
+Optional: set `NCBI_API_KEY` (free, from your [NCBI account settings](https://account.ncbi.nlm.nih.gov/settings/))
+in the server's environment to raise PubMed's limit to 10 req/sec — the server then paces at ~9/sec instead of ~2.85.
+For Claude Desktop, add it under the `"reviewseed"` entry's `"env"` in `claude_desktop_config.json`. Unset, nothing changes.
 
 ---
 

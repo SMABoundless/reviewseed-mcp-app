@@ -36,6 +36,7 @@ test("exposes exactly the expected tool set", async () => {
     "reviewseed_lint_query",
     "reviewseed_lookup",
     "reviewseed_open",
+    "reviewseed_protocol",
     "reviewseed_receipt",
     "reviewseed_search",
     "reviewseed_terminology_drift",
@@ -53,8 +54,21 @@ test("open/search/lookup/advanced_search share one UI resourceUri; the rest are 
   for (const n of shared) {
     assert.equal(uiFor(n), "ui://reviewseed/mcp-app.html", `${n} should render into the shared panel`);
   }
-  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt", "reviewseed_export_records", "reviewseed_terminology_drift", "reviewseed_crosswalk"]) {
+  for (const n of ["reviewseed_assemble_query", "reviewseed_compare_queries", "reviewseed_vocab_search", "reviewseed_translate_query", "reviewseed_validate_recall", "reviewseed_evidence_map", "reviewseed_lint_query", "reviewseed_hedges", "reviewseed_receipt", "reviewseed_export_records", "reviewseed_terminology_drift", "reviewseed_crosswalk", "reviewseed_protocol"]) {
     assert.equal(uiFor(n), undefined, `${n} is headless and should not claim the UI`);
+  }
+});
+
+test("every tool is annotated read-only, and says whether it reaches an outside API", async () => {
+  const { tools } = await h.client.listTools();
+  const remote = new Set([
+    "reviewseed_search", "reviewseed_lookup", "reviewseed_advanced_search", "reviewseed_vocab_search",
+    "reviewseed_vocab_details", "reviewseed_author_search", "reviewseed_compare_queries",
+    "reviewseed_terminology_drift", "reviewseed_evidence_map", "reviewseed_validate_recall",
+  ]);
+  for (const t of tools) {
+    assert.equal(t.annotations?.readOnlyHint, true, `${t.name} should be read-only`);
+    assert.equal(t.annotations?.openWorldHint, remote.has(t.name), `${t.name} openWorldHint`);
   }
 });
 
@@ -433,6 +447,39 @@ test("export_records returns PRISMA starting numbers AND what it cannot know", a
 test("export_records dedupe note refuses credit for cross-database deduplication", async () => {
   const r = payload(await call("reviewseed_export_records", { records: EXPORT_RECORDS }));
   assert.match(r.dedupeNote, /ACROSS databases/);
+});
+
+// ── Search protocol ─────────────────────────────────────────────────────────
+
+const PROTOCOL_ARGS = {
+  source: "pubmed",
+  pool: { keywords: ["wheeze"], mesh: ["Asthma"] },
+  termSources: { mesh: { Asthma: { ids: ["111", "222"], from: "seed" } }, keywords: { wheeze: { ids: [], from: "manual" } } },
+  filters: ["Publication date: 2015-2025"],
+  searchLog: [{ at: "2026-10-20T00:00:00.000Z", source: "pubmed", query: "x", total: 42 }],
+};
+
+test("protocol carries the query assemble_query would build, plus term yield", async () => {
+  const p = payload(await call("reviewseed_protocol", PROTOCOL_ARGS));
+  const q = payload(await call("reviewseed_assemble_query", { source: "pubmed", pool: PROTOCOL_ARGS.pool }));
+  assert.equal(p.protocol.schema, "reviewseed.search-protocol/1");
+  assert.equal(p.protocol.tool.surface, "mcp-app");
+  assert.equal(p.protocol.query.string, q.query, "the two tools must agree on what was searched");
+  assert.deepEqual(p.protocol.filters.summary, ["Publication date: 2015-2025"]);
+  assert.deepEqual(p.protocol.seedRecords, ["111", "222"]);
+  assert.deepEqual(p.termYield.uncorroborated, ["wheeze"], "a typed term with no source is reported, not hidden");
+});
+
+test("framework mode without a key is refused rather than guessed", async () => {
+  const r = payload(await call("reviewseed_protocol", { ...PROTOCOL_ARGS, mode: "framework" }));
+  assert.match(r.error, /framework\.key/);
+});
+
+test("a protocol from the tool feeds straight into a receipt", async () => {
+  const { protocol } = payload(await call("reviewseed_protocol", PROTOCOL_ARGS));
+  const r = payload(await call("reviewseed_receipt", { protocol }));
+  assert.equal(r.schema, "reviewseed.receipt/1");
+  assert.equal(r.total, 42);
 });
 
 // ── Reproducibility receipt ─────────────────────────────────────────────────
