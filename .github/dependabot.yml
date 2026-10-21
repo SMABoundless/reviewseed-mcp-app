@@ -1,0 +1,14 @@
+# Dependency update PRs, mirroring the website's setup. Proposes bumps; never
+# auto-merges. Minor/patch bumps are grouped into one PR so a quiet month
+# produces one review, not six. Majors arrive as their own PRs — the MCP SDK and
+# ext-apps majors in particular need a real Claude Desktop test before merging,
+# since the offline suite can't exercise the sandboxed host bridge.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
