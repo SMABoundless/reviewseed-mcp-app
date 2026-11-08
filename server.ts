@@ -323,7 +323,7 @@ export function createServer(): McpServer {
           kwOp: z.enum(["OR", "AND"]).default("OR"),
           vocabOp: z.enum(["OR", "AND"]).default("OR"),
           joinOp: z.enum(["AND", "OR"]).default("AND"),
-        }).default({}),
+        }).prefault({}),
       }).optional()
         .describe("Generate the standard tuning ladder from a term pool: as-built, headings-only, free-text-only, " +
                   "broadened to all fields, narrowed to titles, and keywords AND'd. Rungs that cannot differ from " +
@@ -397,7 +397,7 @@ export function createServer(): McpServer {
         kwOp: z.enum(["OR", "AND"]).default("OR"),
         vocabOp: z.enum(["OR", "AND"]).default("OR"),
         joinOp: z.enum(["AND", "OR"]).default("AND"),
-      }).default({}),
+      }).prefault({}),
       framework: z.object({
         key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
         buckets: z.record(z.string(), z.array(z.string())).describe("Bucket key -> term labels placed in that bucket"),
@@ -553,7 +553,7 @@ export function createServer(): McpServer {
         kwOp: z.enum(["OR", "AND"]).default("OR"),
         vocabOp: z.enum(["OR", "AND"]).default("OR"),
         joinOp: z.enum(["AND", "OR"]).default("AND"),
-      }).default({}),
+      }).prefault({}),
       framework: z.object({
         key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
         buckets: z.record(z.string(), z.array(z.string())).describe("Bucket key -> term labels placed in that bucket"),
