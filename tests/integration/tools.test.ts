@@ -205,6 +205,20 @@ test("assemble_query builds a boolean string with no UI and no network", async (
   assert.equal(r.query, '"gabapentin"[tiab] AND "Neuralgia"[MeSH Terms]');
 });
 
+// Pins the OR/OR/AND operator defaults when booleanOpts is omitted entirely.
+// Two layers supply them: the schema (.prefault({}) in server.ts — zod 4's
+// .default({}) skips nested defaults) and buildBooleanQuery's own `??`
+// fallbacks. This guards the end result if either layer changes.
+test("assemble_query applies every booleanOpts default when booleanOpts is omitted", async () => {
+  const r = payload(await call("reviewseed_assemble_query", {
+    source: "pubmed",
+    pool: { keywords: ["heart attack", "myocardial infarction"], mesh: ["Myocardial Infarction", "Angina Pectoris"] },
+  }));
+  assert.equal(r.query,
+    '("heart attack"[tiab] OR "myocardial infarction"[tiab]) AND ' +
+    '("Myocardial Infarction"[MeSH Terms] OR "Angina Pectoris"[MeSH Terms])');
+});
+
 test("assemble_query in framework mode with no key lists all ten frameworks plus Custom", async () => {
   const r = payload(await call("reviewseed_assemble_query", {
     source: "pubmed", mode: "framework",
