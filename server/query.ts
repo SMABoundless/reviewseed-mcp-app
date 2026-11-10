@@ -32,7 +32,7 @@ function vocabTerm(term: string, target: Source): string {
 // FIRST "(" doesn't close until the LAST character, i.e. the whole string is
 // one group, not "(A) OR (B)" (which starts with "(" and ends with ")" too,
 // but isn't a single enclosing unit and still needs the outer wrap).
-function isFullyWrapped(s: string): boolean {
+export function isFullyWrapped(s: string): boolean {
   const t = s.trim();
   if (t.length < 2 || t[0] !== "(" || t[t.length - 1] !== ")") return false;
   let depth = 0;
@@ -49,7 +49,7 @@ export function buildBooleanQuery(
   opts: { kwOp?: "OR" | "AND"; vocabOp?: "OR" | "AND"; joinOp?: "AND" | "OR" },
   target: Source,
 ): string {
-  const kwOp = opts.kwOp ?? "OR", vocabOp = opts.vocabOp ?? "OR", joinOp = opts.joinOp ?? "AND";
+  const kwOp = opts.kwOp ?? "OR", vocabOp = opts.vocabOp ?? "OR", joinOp = opts.joinOp ?? "OR";
   const parts: string[] = [];
   if (pool.keywords.length) {
     const inner = pool.keywords.map(t => kwTerm(t, kwFields, target)).join(` ${kwOp} `);
@@ -97,6 +97,21 @@ export const FRAMEWORKS: Record<string, FrameworkDef> = {
   Custom:  { label: "Custom",  full: "Build your own concept groups", tag: "Flexible", blurb: "Define your own buckets (1–6).", buckets: [{ key: "c1", label: "Concept 1" }, { key: "c2", label: "Concept 2" }, { key: "c3", label: "Concept 3" }], custom: true },
 };
 
+/**
+ * The bucket definitions a framework query is built from. For the fixed
+ * frameworks that is the catalogue entry. Custom is user-defined (1-6 concept
+ * groups), so any bucket key the caller supplies beyond the three defaults is
+ * honoured in the order given — otherwise terms placed in a fourth concept
+ * would silently vanish from the query.
+ */
+export function frameworkBucketDefs(frameworkKey: string, buckets: Record<string, string[]>): FrameworkBucketDef[] {
+  const fw = FRAMEWORKS[frameworkKey];
+  if (!fw) throw new Error(`Unknown framework "${frameworkKey}"`);
+  if (!fw.custom) return fw.buckets;
+  const known = new Set(fw.buckets.map(b => b.key));
+  return [...fw.buckets, ...Object.keys(buckets).filter(k => !known.has(k)).map(k => ({ key: k, label: k }))];
+}
+
 // buckets: bucket key -> term labels placed in that bucket. Each term's type
 // (keyword / vocab / assembled-query) is resolved by pool membership, same
 // as the website's FrameworkBuilder.
@@ -107,12 +122,11 @@ export function buildFrameworkQuery(
   kwFields: KwFields,
   target: Source,
 ): string {
-  const fw = FRAMEWORKS[frameworkKey];
-  if (!fw) throw new Error(`Unknown framework "${frameworkKey}"`);
+  const defs = frameworkBucketDefs(frameworkKey, buckets);
   const activeQueries = target === "eric" ? pool.ericQueries : target === "trials" ? pool.ctQueries : pool.queries;
   const vocabPool = target === "eric" ? pool.eric : pool.mesh;
 
-  return fw.buckets.map(b => {
+  return defs.map(b => {
     const terms = buckets[b.key] ?? [];
     if (!terms.length) return null;
     const vocab = terms.filter(t => vocabPool.includes(t));
@@ -133,6 +147,31 @@ export function buildFrameworkQuery(
     // only wrap when there's an internal OR to protect from the top-level AND.
     return parts.length > 1 ? `(${parts.join(" OR ")})` : (parts[0] ?? null);
   }).filter((x): x is string => x !== null).join("\nAND ");
+}
+
+/** A framework and the terms placed in its buckets — what framework mode builds from. */
+export interface FrameworkSpec { key: string; buckets: Record<string, string[]> }
+
+/**
+ * The concepts of a framework that actually contribute to a query for this
+ * pool and source: one entry per bucket holding at least one term the pool
+ * still contains. Tuning rungs and leave-one-out use this to notice when
+ * removing terms empties a bucket — at which point the whole concept drops out
+ * of the AND and the query gets BROADER, which is not what "remove a term"
+ * is supposed to measure.
+ */
+export function activeConcepts(
+  framework: FrameworkSpec,
+  pool: Pool,
+  target: Source,
+): Array<{ key: string; label: string; terms: string[] }> {
+  const defs = frameworkBucketDefs(framework.key, framework.buckets);
+  const queries = target === "eric" ? pool.ericQueries : target === "trials" ? pool.ctQueries : pool.queries;
+  const vocab = target === "eric" ? pool.eric : pool.mesh;
+  const live = new Set([...(pool.keywords ?? []), ...(vocab ?? []), ...(queries ?? [])]);
+  return defs
+    .map(b => ({ key: b.key, label: b.label, terms: (framework.buckets[b.key] ?? []).filter(t => live.has(t)) }))
+    .filter(b => b.terms.length > 0);
 }
 
 // ── Recall validation: restrict a query to specific records ───────────────────

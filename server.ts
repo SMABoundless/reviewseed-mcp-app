@@ -16,7 +16,7 @@ import {
   ERIC_ADV_FIELDS, ericAssembleTerm, ericAuthorSearch, ericLookup, ericSearch,
 } from "./server/eric.js";
 import { withMatchedVia } from "./server/match.js";
-import { isSlowLookup, meshHistory, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
+import { isSlowLookup, meshDescriptorId, meshHistory, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
 import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import { lintQuery } from "./server/lint.js";
 import { applyHedge, getHedge, HEDGE_CAVEAT, HEDGES, hedgesFor } from "./server/hedges.js";
@@ -24,13 +24,13 @@ import { buildReceipt, diffReceipts } from "./server/receipt.js";
 import { buildSearchProtocol, buildTermYield, type TermSources } from "./server/protocol.js";
 import { dedupeRecords, prismaCounts, toBibtex, toCsv, toRis } from "./server/export.js";
 import { buildDriftReport } from "./server/drift.js";
-import { buildQueryVariants } from "./server/variants.js";
+import { buildQueryVariants, leaveOneOutVariants } from "./server/variants.js";
 import { buildCrosswalkReport, crosswalkCandidates } from "./server/crosswalk.js";
 import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
-import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS, matrixCellQuery, restrictToIds } from "./server/query.js";
-import type { Source } from "./server/types.js";
+import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS, isFullyWrapped, matrixCellQuery, restrictToIds } from "./server/query.js";
+import type { Article, Source } from "./server/types.js";
 
 // When compiled, server.js lives inside dist/ alongside mcp-app.html
 const DIST_DIR = import.meta.dirname.endsWith("dist")
@@ -62,6 +62,40 @@ const poolSchema = z.object({
 // anything else->bare (Essie's default search already spans title+summary+conditions).
 const KW_FIELD_TAGS = "tiab (title/abstract), ti (title only), ab (abstract only — no-op for trials), all (no field restriction)";
 const kwFieldsSchema = z.record(z.string(), z.string()).default({});
+// A framework and the terms placed in its buckets. Tools that rebuild a query
+// from a pool take this so a multi-concept question keeps its structure (OR
+// within a bucket, AND across buckets) instead of being flattened to one OR.
+const frameworkSpecSchema = z.object({
+  key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
+  buckets: z.record(z.string(), z.array(z.string())).describe("Bucket key -> term labels placed in that bucket"),
+});
+const FRAMEWORK_HINT =
+  "Pass the same `framework` you gave reviewseed_assemble_query whenever the question has more than one concept. " +
+  "Without it the pool is treated as ONE concept and every term is OR'd together.";
+
+// Record lists are the most expensive thing this server returns: a full PubMed
+// record is ~2,400 characters and a full trial record ~5,000, most of it
+// abstract. A model that is harvesting terms or checking what a query finds
+// needs the title and the indexing, not the abstract — so every record-returning
+// tool takes `detail`. "full" stays the default because the inline UI hydrates
+// itself from these same results and shows abstracts.
+const detailSchema = z.enum(["full", "brief"]).default("full").describe(
+  "\"brief\" drops abstracts and shortens author lists to the first three — roughly a quarter of the size, with " +
+  "titles, ids, MeSH headings / ERIC descriptors and keywords intact. Prefer it when working headlessly: scanning " +
+  "what a query finds, or harvesting vocabulary. Use \"full\" (default) when you need to read abstracts.",
+);
+const BRIEF_NOTE = "Brief records: abstracts omitted, author lists cut to three. Repeat with detail \"full\", or pass specific ids to reviewseed_lookup, to read abstracts.";
+function briefArticles<T extends Article>(articles: T[]): T[] {
+  return articles.map(a => ({
+    ...a,
+    abstract: "",
+    authors: a.authors.length > 3 ? [...a.authors.slice(0, 3), "et al."] : a.authors,
+  }));
+}
+/** Apply `detail` to any result carrying an `articles` array. */
+function withDetail<R extends { articles: Article[] }>(r: R, detail: "full" | "brief"): R | (R & { detail: "brief"; note: string }) {
+  return detail === "brief" ? { ...r, articles: briefArticles(r.articles), detail: "brief" as const, note: BRIEF_NOTE } : r;
+}
 
 function textResult(payload: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(payload) }] };
@@ -142,16 +176,18 @@ export function createServer(): McpServer {
           "descriptor/keyword exact match, or free-text substring in title/abstract) — instead of leaving you to " +
           "cross-reference the full descriptor list by hand to see why it matched.",
         ),
+        detail: detailSchema,
       },
       annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async ({ source, query, page, pageSize, matchTerms }) => {
+    async ({ source, query, page, pageSize, matchTerms, detail }) => {
       try {
         const r = source === "eric" ? await ericSearch(query, page, pageSize)
           : source === "trials" ? await ctSearch(query, page)
           : await pubmedSearch(query, page, pageSize);
-        return textResult({ ...r, articles: withMatchedVia(r.articles, matchTerms) });
+        // matchedVia is computed on the full record (it reads the abstract), then trimmed.
+        return textResult(withDetail({ ...r, articles: withMatchedVia(r.articles, matchTerms) }, detail));
       } catch (e) { return errorResult(e); }
     },
   );
@@ -166,16 +202,17 @@ export function createServer(): McpServer {
       inputSchema: {
         source: sourceEnum,
         text: z.string().describe("Pasted reference list"),
+        detail: detailSchema,
       },
       annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async ({ source, text }) => {
+    async ({ source, text, detail }) => {
       try {
         const r = source === "eric" ? await ericLookup(text)
           : source === "trials" ? await ctLookup(text)
           : await pubmedLookup(text);
-        return textResult(r);
+        return textResult(withDetail(r, detail));
       } catch (e) { return errorResult(e); }
     },
   );
@@ -200,11 +237,12 @@ export function createServer(): McpServer {
         })).default([]),
         run: z.boolean().default(true).describe("Also execute the assembled query against the source"),
         page: z.number().int().min(1).max(5).default(1),
+        detail: detailSchema,
       },
       annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async ({ source, rows, run, page }) => {
+    async ({ source, rows, run, page, detail }) => {
       try {
         if (!rows.length) {
           const fields = source === "eric" ? ERIC_ADV_FIELDS : source === "trials" ? CT_ADV_FIELDS : PUBMED_FIELDS;
@@ -219,7 +257,7 @@ export function createServer(): McpServer {
         const results = source === "eric" ? await ericSearch(query, page, 10)
           : source === "trials" ? await ctSearch(query, page)
           : await pubmedSearch(query, page, 10);
-        return textResult({ query, ...results });
+        return textResult(withDetail({ query, ...results }, detail));
       } catch (e) { return errorResult(e); }
     },
   );
@@ -256,20 +294,31 @@ export function createServer(): McpServer {
   server.tool(
     "reviewseed_vocab_details",
     "Get the scope note (MeSH only), entry terms / Use-For synonyms, and broader/narrower headings for a MeSH or " +
-    "ERIC Thesaurus term. Broader/narrower terms can be passed back into reviewseed_vocab_search to walk the hierarchy.",
+    "ERIC Thesaurus term. Broader/narrower terms can be passed back into reviewseed_vocab_search to walk the hierarchy. " +
+    "An empty `scopeNote` always comes with a `scopeNoteStatus` saying why — never read it as \"this heading has no definition\".",
     {
       vocab: z.enum(["mesh", "eric"]),
       label: z.string().describe("The canonical heading/descriptor label (not a synonym)"),
-      id: z.string().optional().describe("MeSH descriptor id, if known from a prior vocab_search result — enables the scope note"),
+      id: z.string().optional().describe("MeSH descriptor id, if known from a prior vocab_search result. Optional: without it the id is looked up from the label (one extra request)."),
     },
     READS_REMOTE,
     async ({ vocab, label, id }) => {
       try {
         if (vocab === "mesh") {
           const started = Date.now();
-          const details = await meshVocabDetails(label, id);
+          // The scope note is keyed by descriptor id. Without one, resolve it
+          // from the label instead of returning a blank note that reads as
+          // "no definition".
+          const resolvedId = id ?? await meshDescriptorId(label);
+          const details = await meshVocabDetails(label, resolvedId ?? undefined);
+          const status = details.scopeNote ? {} : {
+            scopeNoteStatus: resolvedId
+              ? "NLM returned no scope note for this descriptor. Some headings have none, and the lookup can also fail silently — check the MeSH Browser before concluding it is undefined."
+              : `No MeSH heading is named exactly "${label}", so there is no scope note to return. Use reviewseed_vocab_search to find the canonical label.`,
+          };
+          const out = { ...(resolvedId ? { id: resolvedId } : {}), ...details, ...status };
           const slow = isSlowLookup(started, Date.now());
-          return textResult(slow ? { ...details, slow, notice: SLOW_LOOKUP_NOTICE } : details);
+          return textResult(slow ? { ...out, slow, notice: SLOW_LOOKUP_NOTICE } : out);
         }
         const details = await ericThesaurusDetails(label);
         return details === undefined
@@ -287,14 +336,15 @@ export function createServer(): McpServer {
       source: sourceEnum,
       name: z.string(),
       page: z.number().int().min(1).max(5).default(1),
+      detail: detailSchema,
     },
     READS_REMOTE,
-    async ({ source, name, page }) => {
+    async ({ source, name, page, detail }) => {
       try {
         const r = source === "eric" ? await ericAuthorSearch(name, page, 10)
           : source === "trials" ? await ctAuthorSearch(name)
           : await pubmedAuthorSearch(name, page, 10);
-        return textResult(r);
+        return textResult(withDetail(r, detail));
       } catch (e) { return errorResult(e); }
     },
   );
@@ -322,22 +372,27 @@ export function createServer(): McpServer {
         booleanOpts: z.object({
           kwOp: z.enum(["OR", "AND"]).default("OR"),
           vocabOp: z.enum(["OR", "AND"]).default("OR"),
-          joinOp: z.enum(["AND", "OR"]).default("AND"),
+          joinOp: z.enum(["AND", "OR"]).default("OR"),
         }).prefault({}),
+        framework: frameworkSpecSchema.optional().describe(FRAMEWORK_HINT),
       }).optional()
         .describe("Generate the standard tuning ladder from a term pool: as-built, headings-only, free-text-only, " +
                   "broadened to all fields, narrowed to titles, and keywords AND'd. Rungs that cannot differ from " +
-                  "the baseline are reported under `skipped` with a reason rather than dropped."),
+                  "the baseline are reported under `skipped` with a reason rather than dropped. With `framework`, " +
+                  "each rung keeps the concept structure; a rung that empties a concept says so in its `rationale`."),
       sampleSize: z.number().int().min(5).max(50).default(20).describe("Top-ranked ids per variant to sample for uniqueness (ignored for trials, fixed at 10)"),
     },
     READS_REMOTE,
     async ({ source, queries, autoFrom, sampleSize }) => {
       let skipped: Array<{ key: string; label: string; reason: string }> = [];
+      // Framework rungs that lost a whole concept: the caution travels with the count.
+      const rungNotes: Record<string, string> = {};
       if (autoFrom) {
-        const v = buildQueryVariants(autoFrom.pool, autoFrom.kwFields, autoFrom.booleanOpts, source);
+        const v = buildQueryVariants(autoFrom.pool, autoFrom.kwFields, autoFrom.booleanOpts, source, autoFrom.framework);
         skipped = v.skipped;
         // Cap at the tool's own limit, and say so rather than truncating quietly.
         queries = v.variants.slice(0, 6).map(x => ({ label: x.label, query: x.query }));
+        for (const x of v.variants.slice(0, 6)) if (x.droppedConcepts?.length) rungNotes[x.label] = x.rationale;
         if (v.variants.length > 6) {
           skipped = [...skipped, { key: "over-limit", label: "Beyond six variants",
             reason: `${v.variants.length - 6} further rung(s) were not run: this tool compares at most six at once.` }];
@@ -373,6 +428,7 @@ export function createServer(): McpServer {
         error: r.error,
         sampled: r.ids.length,
         uniqueToThisVariant: r.ids.filter(id => !idSets.some((s, j) => j !== i && s.has(id))),
+        ...(rungNotes[r.label] ? { caution: rungNotes[r.label] } : {}),
       }));
       return textResult(skipped.length ? { comparison, skipped } : { comparison });
     },
@@ -383,7 +439,10 @@ export function createServer(): McpServer {
     "reviewseed_assemble_query",
     "Assemble a Boolean or framework-structured (PICO, PECO, SPIDER, PCC, ...) search string from a curated term " +
     "pool, in the target source's own syntax (PubMed bracket tags, ERIC field prefixes, or ClinicalTrials.gov " +
-    "AREA[...] operators). Call with mode \"framework\" and no `framework.key` to list the ten available frameworks. " +
+    "AREA[...] operators). Boolean mode treats the whole pool as ONE concept: keywords, headings and " +
+    "snippets are OR'd together by default, because a record matching either the free text or the heading belongs " +
+    "in the set. For a question with several concepts (population, intervention, ...) use mode \"framework\", " +
+    "which ORs within each bucket and ANDs the buckets. Call with mode \"framework\" and no `framework.key` to list the ten available frameworks. " +
     "Callable directly without ever opening the UI.",
     {
       source: sourceEnum,
@@ -396,7 +455,7 @@ export function createServer(): McpServer {
       booleanOpts: z.object({
         kwOp: z.enum(["OR", "AND"]).default("OR"),
         vocabOp: z.enum(["OR", "AND"]).default("OR"),
-        joinOp: z.enum(["AND", "OR"]).default("AND"),
+        joinOp: z.enum(["AND", "OR"]).default("OR"),
       }).prefault({}),
       framework: z.object({
         key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
@@ -552,7 +611,7 @@ export function createServer(): McpServer {
       booleanOpts: z.object({
         kwOp: z.enum(["OR", "AND"]).default("OR"),
         vocabOp: z.enum(["OR", "AND"]).default("OR"),
-        joinOp: z.enum(["AND", "OR"]).default("AND"),
+        joinOp: z.enum(["AND", "OR"]).default("OR"),
       }).prefault({}),
       framework: z.object({
         key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
@@ -633,11 +692,12 @@ export function createServer(): McpServer {
   server.tool(
     "reviewseed_hedges",
     "List published methodological search filters — 'hedges' — for a source, or attach one to a query. Covers the " +
-    "Cochrane sensitivity-maximising randomised-trial filter, NLM's systematic-review publication type, human/animal " +
+    "Cochrane randomised-trial filter in both published versions (sensitivity-maximising for a full systematic " +
+    "review; sensitivity- and precision-maximising for a smaller set), NLM's systematic-review publication type, human/animal " +
     "scoping, ERIC peer-review and education-level limits, and ClinicalTrials.gov study type. EVERY entry carries its " +
     "publisher, a citation, its sensitivity/precision trade-off, and a `validated` flag that is FALSE for convenience " +
     "clusters nobody has measured — pass that flag on to the user rather than presenting all filters as equivalent. " +
-    "These strings are point-in-time transcriptions verified on 2026-08-01; always surface `caveat` telling the user to " +
+    "These strings are point-in-time transcriptions (verified dates are in `caveat`); always surface `caveat` telling the user to " +
     "check the citation against the current published version before relying on it in a review. Pass `apply` with a " +
     "query to get the combined string back, correctly parenthesised.",
     {
@@ -755,7 +815,7 @@ export function createServer(): McpServer {
     "finds and which it MISSES — the standard known-item test for a systematic-review search. Optionally pass " +
     "`pool` and `kwFields` to also get leave-one-out term criticality: each term is dropped in turn and the " +
     "check re-run, showing which terms are load-bearing for recall and which can be pruned without losing a " +
-    "single seed. Costs one search per variant, run sequentially against the source's rate limit, so keep the " +
+    "single seed. For a multi-concept query also pass `framework`, so each variant keeps its concept structure. Costs one search per variant, run sequentially against the source's rate limit, so keep the " +
     "term list to what you actually want tested.",
     {
       source: sourceEnum,
@@ -764,11 +824,13 @@ export function createServer(): McpServer {
         .describe("Record ids the query SHOULD retrieve — PMIDs, ERIC accessions (EJ…/ED…), or NCT ids"),
       pool: poolSchema.optional().describe("Pass the term pool to also run leave-one-out term criticality"),
       kwFields: kwFieldsSchema,
+      framework: frameworkSpecSchema.optional()
+        .describe("For leave-one-out on a multi-concept query. " + FRAMEWORK_HINT),
       leaveOneOut: z.boolean().default(false)
         .describe("Run the leave-one-out pass. Requires `pool`. One extra search per pooled term."),
     },
     READS_REMOTE,
-    async ({ source, query, seedIds, pool, kwFields, leaveOneOut }) => {
+    async ({ source, query, seedIds, pool, kwFields, framework, leaveOneOut }) => {
       try {
         // Which seeds does a given string retrieve? One search per string: AND
         // the string with a clause matching only the seed ids and read back the
@@ -802,22 +864,31 @@ export function createServer(): McpServer {
 
         // Leave-one-out: drop each term, rebuild, re-check. Sequential —
         // concurrent bursts against NCBI measurably increase 429s.
-        const terms: Array<{ kind: "keywords" | "mesh" | "eric"; label: string }> = [
-          ...(pool.keywords ?? []).map(label => ({ kind: "keywords" as const, label })),
-          ...(pool.mesh ?? []).map(label => ({ kind: "mesh" as const, label })),
-          ...(pool.eric ?? []).map(label => ({ kind: "eric" as const, label })),
-        ];
+        //
+        // The variants are rebuilt from the pool (and framework), so they are
+        // only comparable to a baseline rebuilt the same way. If that rebuild
+        // is not the `query` that was passed in, measure losses against the
+        // rebuild and say so — otherwise "seeds lost" would mix up the effect
+        // of removing a term with the difference between two unrelated strings.
+        // Compared ignoring line breaks and one redundant outer pair of parens.
+        const flat = (q: string) => {
+          const t = q.replace(/\s+/g, " ").trim();
+          return isFullyWrapped(t) ? t.slice(1, -1).trim() : t;
+        };
+        const rebuilt = framework
+          ? buildFrameworkQuery(framework.key, framework.buckets, pool, kwFields, source)
+          : buildBooleanQuery(pool, kwFields, {}, source);
+        const sameAsQuery = flat(rebuilt) === flat(query);
+        const baselineHits = sameAsQuery || !rebuilt.trim() ? hits : await retrieved(rebuilt);
         const criticality = [];
-        for (const t of terms) {
-          const without = { ...pool, [t.kind]: (pool[t.kind] ?? []).filter(x => x !== t.label) };
-          const q = buildBooleanQuery(without, kwFields, {}, source);
+        for (const v of leaveOneOutVariants(pool, kwFields, {}, source, framework)) {
           // Dropping the last term leaves no query at all. "Everything is lost"
           // is true but says nothing about the term, so report the degenerate
           // case as itself rather than dressing it up as criticality.
-          if (!q.trim()) {
+          if (v.empty) {
             criticality.push({
-              term: t.label,
-              pool: t.kind,
+              term: v.term,
+              pool: v.pool,
               seedsLostWithoutIt: [],
               critical: null,
               emptyWithoutIt: true,
@@ -825,11 +896,26 @@ export function createServer(): McpServer {
             });
             continue;
           }
-          const got = await retrieved(q);
-          const lost = hits.filter(id => !got.includes(id));
+          // The last term of a concept: removing it removes the concept, which
+          // BROADENS the query. No seed can be lost that way, and reading that
+          // as "prunable" would be exactly wrong.
+          if (v.soleInConcept) {
+            criticality.push({
+              term: v.term,
+              pool: v.pool,
+              seedsLostWithoutIt: [],
+              critical: null,
+              emptyWithoutIt: false,
+              soleInConcept: v.soleInConcept,
+              note: `Not testable by leave-one-out: it's the only term in ${v.soleInConcept}, so removing it removes the whole concept and broadens the search.`,
+            });
+            continue;
+          }
+          const got = await retrieved(v.query);
+          const lost = baselineHits.filter(id => !got.includes(id));
           criticality.push({
-            term: t.label,
-            pool: t.kind,
+            term: v.term,
+            pool: v.pool,
             seedsLostWithoutIt: lost,
             critical: lost.length > 0,
             emptyWithoutIt: false,
@@ -838,12 +924,23 @@ export function createServer(): McpServer {
               : "No seed is lost without it. Prunable for precision, though it may still matter for records outside the seed set.",
           });
         }
+        const tested = criticality.filter(c => c.critical !== null).length;
         return textResult({
           ...base,
           criticality,
           prunable: criticality.filter(c => c.critical === false).map(c => c.term),
-          untestable: criticality.filter(c => c.emptyWithoutIt).map(c => c.term),
-          searchesRun: 1 + criticality.filter(c => !c.emptyWithoutIt).length,
+          untestable: criticality.filter(c => c.critical === null).map(c => c.term),
+          ...(sameAsQuery ? {} : {
+            leaveOneOutBaseline: {
+              query: rebuilt,
+              retrieved: baselineHits,
+              note: "The pool" + (framework ? " and framework rebuild" : " rebuilds") + " to a different string than `query`, so leave-one-out " +
+                "losses are measured against this rebuilt string, not against `query`. " +
+                (framework ? "" : "If the query has several concepts, pass `framework` so the rebuild keeps them. ") +
+                "Hand edits to `query` are not reflected in the leave-one-out results.",
+            },
+          }),
+          searchesRun: 1 + (sameAsQuery || !rebuilt.trim() ? 0 : 1) + tested,
         });
       } catch (e) { return errorResult(e); }
     },
@@ -865,11 +962,12 @@ export function createServer(): McpServer {
       platforms: z.array(z.enum(PLATFORMS.map(p => p.key) as [string, ...string[]]))
         .default([])
         .describe("Restrict to these platform keys; omit or leave empty for all of them"),
+      framework: frameworkSpecSchema.optional().describe(FRAMEWORK_HINT),
     },
     READS_LOCAL,
-    async ({ pool, kwFields, platforms }) => {
+    async ({ pool, kwFields, platforms, framework }) => {
       try {
-        const m = buildTranslationMatrix(pool, kwFields);
+        const m = buildTranslationMatrix(pool, kwFields, framework);
         const wanted = platforms.length ? m.platforms.filter(p => platforms.includes(p.key)) : m.platforms;
         return textResult({ ...m, platforms: wanted });
       } catch (e) { return errorResult(e); }

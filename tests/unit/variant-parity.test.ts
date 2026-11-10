@@ -11,8 +11,13 @@ const fx = JSON.parse(fs.readFileSync(FIXTURE, "utf-8"));
 
 for (const c of fx.cases) {
   test(`variant parity: ${c.name}`, () => {
-    const v = buildQueryVariants(c.pool, c.kwFields, c.opts, c.source);
+    const v = buildQueryVariants(c.pool, c.kwFields, c.opts, c.source, c.framework);
     assert.deepEqual(v.variants.map(x => ({ key: x.key, query: x.query })), c.expectedVariants);
+    // A framework rung that lost a whole concept must name it: such a rung can be
+    // LARGER than the baseline, and an unlabelled one reads as a clean subset.
+    const dropped = Object.fromEntries(v.variants.filter(x => x.droppedConcepts).map(x => [x.key, x.droppedConcepts]));
+    assert.deepEqual(dropped, c.expectedDroppedConcepts ?? {});
+    for (const x of v.variants.filter(x => x.droppedConcepts)) assert.match(x.rationale, /CAUTION/);
     // The skip list matters as much as the variants: a rung omitted silently makes
     // an incomplete ladder read as a complete comparison.
     assert.deepEqual(v.skipped.map(x => x.key), c.expectedSkipped.map((x: any) => x.key));
@@ -26,7 +31,7 @@ for (const c of fx.cases) {
 
 for (const c of fx.leaveOneOutCases) {
   test(`leave-one-out parity: ${c.name}`, () => {
-    assert.deepEqual(leaveOneOutVariants(c.pool, c.kwFields, c.opts, c.source), c.expected);
+    assert.deepEqual(leaveOneOutVariants(c.pool, c.kwFields, c.opts, c.source, c.framework), c.expected);
   });
 }
 
@@ -46,14 +51,14 @@ test("every variant carries a rationale, so a number is never presented bare", (
 
 test("as-built is always the first rung — everything else is measured against it", () => {
   for (const c of fx.cases) {
-    const v = buildQueryVariants(c.pool, c.kwFields, c.opts, c.source);
+    const v = buildQueryVariants(c.pool, c.kwFields, c.opts, c.source, c.framework);
     assert.equal(v.variants[0].key, "as-built");
   }
 });
 
 test("no variant is ever identical to the baseline", () => {
   for (const c of fx.cases) {
-    const v = buildQueryVariants(c.pool, c.kwFields, c.opts, c.source);
+    const v = buildQueryVariants(c.pool, c.kwFields, c.opts, c.source, c.framework);
     const baseline = v.variants[0].query;
     for (const x of v.variants.slice(1)) {
       assert.notEqual(x.query, baseline, `${x.key} duplicates the baseline and would measure nothing`);

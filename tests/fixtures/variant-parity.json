@@ -36,7 +36,7 @@
       "expectedVariants": [
         {
           "key": "as-built",
-          "query": "(\"burnout\"[tiab] OR \"compassion fatigue\"[tiab]) AND \"Burnout, Professional\"[MeSH Terms]"
+          "query": "(\"burnout\"[tiab] OR \"compassion fatigue\"[tiab]) OR \"Burnout, Professional\"[MeSH Terms]"
         },
         {
           "key": "vocab-only",
@@ -48,15 +48,15 @@
         },
         {
           "key": "keywords-all-fields",
-          "query": "(\"burnout\"[all] OR \"compassion fatigue\"[all]) AND \"Burnout, Professional\"[MeSH Terms]"
+          "query": "(\"burnout\"[all] OR \"compassion fatigue\"[all]) OR \"Burnout, Professional\"[MeSH Terms]"
         },
         {
           "key": "keywords-title-only",
-          "query": "(\"burnout\"[ti] OR \"compassion fatigue\"[ti]) AND \"Burnout, Professional\"[MeSH Terms]"
+          "query": "(\"burnout\"[ti] OR \"compassion fatigue\"[ti]) OR \"Burnout, Professional\"[MeSH Terms]"
         },
         {
           "key": "keywords-and",
-          "query": "(\"burnout\"[tiab] AND \"compassion fatigue\"[tiab]) AND \"Burnout, Professional\"[MeSH Terms]"
+          "query": "(\"burnout\"[tiab] AND \"compassion fatigue\"[tiab]) OR \"Burnout, Professional\"[MeSH Terms]"
         }
       ],
       "expectedSkipped": []
@@ -216,7 +216,7 @@
       "expectedVariants": [
         {
           "key": "as-built",
-          "query": "(title:\"tutoring\" OR description:\"tutoring\") AND subject:\"Rural Schools\""
+          "query": "(title:\"tutoring\" OR description:\"tutoring\") OR subject:\"Rural Schools\""
         },
         {
           "key": "vocab-only",
@@ -228,11 +228,11 @@
         },
         {
           "key": "keywords-all-fields",
-          "query": "\"tutoring\" AND subject:\"Rural Schools\""
+          "query": "\"tutoring\" OR subject:\"Rural Schools\""
         },
         {
           "key": "keywords-title-only",
-          "query": "title:\"tutoring\" AND subject:\"Rural Schools\""
+          "query": "title:\"tutoring\" OR subject:\"Rural Schools\""
         }
       ],
       "expectedSkipped": [
@@ -242,8 +242,42 @@
         }
       ]
     }
-  ],
+  
+    ,{
+      "name": "framework: rungs keep the concept structure, and a rung that empties a concept says so",
+      "source": "pubmed",
+      "pool": { "keywords": ["teen", "mindfulness", "yoga"], "mesh": ["Adolescent", "Anxiety"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "framework": { "key": "PICO", "buckets": { "P": ["teen", "Adolescent"], "I": ["mindfulness"], "O": ["Anxiety"] } },
+      "expectedVariants": [
+        { "key": "as-built", "query": "(\"teen\"[tiab] OR \"Adolescent\"[MeSH Terms])\nAND \"mindfulness\"[tiab]\nAND \"Anxiety\"[MeSH Terms]" },
+        { "key": "vocab-only", "query": "\"Adolescent\"[MeSH Terms]\nAND \"Anxiety\"[MeSH Terms]" },
+        { "key": "keywords-only", "query": "\"teen\"[tiab]\nAND \"mindfulness\"[tiab]" },
+        { "key": "keywords-all-fields", "query": "(\"teen\"[all] OR \"Adolescent\"[MeSH Terms])\nAND \"mindfulness\"[all]\nAND \"Anxiety\"[MeSH Terms]" },
+        { "key": "keywords-title-only", "query": "(\"teen\"[ti] OR \"Adolescent\"[MeSH Terms])\nAND \"mindfulness\"[ti]\nAND \"Anxiety\"[MeSH Terms]" }
+      ],
+      "expectedDroppedConcepts": { "vocab-only": ["Intervention"], "keywords-only": ["Outcome"] },
+      "expectedSkipped": [
+        { "key": "keywords-and", "reasonMatches": "Not applicable to a framework query" }
+      ]
+    }
+],
   "leaveOneOutCases": [
+    {
+      "name": "framework: only placed terms are tested, and the last term of a concept is flagged",
+      "source": "pubmed",
+      "pool": { "keywords": ["teen", "mindfulness", "yoga"], "mesh": ["Adolescent", "Anxiety"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "framework": { "key": "PICO", "buckets": { "P": ["teen", "Adolescent"], "I": ["mindfulness"], "O": ["Anxiety"] } },
+      "expected": [
+        { "term": "teen", "pool": "keywords", "query": "\"Adolescent\"[MeSH Terms]\nAND \"mindfulness\"[tiab]\nAND \"Anxiety\"[MeSH Terms]", "empty": false },
+        { "term": "mindfulness", "pool": "keywords", "query": "(\"teen\"[tiab] OR \"Adolescent\"[MeSH Terms])\nAND \"Anxiety\"[MeSH Terms]", "empty": false, "soleInConcept": "Intervention" },
+        { "term": "Adolescent", "pool": "mesh", "query": "\"teen\"[tiab]\nAND \"mindfulness\"[tiab]\nAND \"Anxiety\"[MeSH Terms]", "empty": false },
+        { "term": "Anxiety", "pool": "mesh", "query": "(\"teen\"[tiab] OR \"Adolescent\"[MeSH Terms])\nAND \"mindfulness\"[tiab]", "empty": false, "soleInConcept": "Outcome" }
+      ]
+    },
     {
       "name": "each term's pool is named, and removing the only term is flagged empty",
       "source": "pubmed",

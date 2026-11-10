@@ -14,7 +14,7 @@
 //
 // The four field tags are the same ones the rest of ReviewSeed uses — tiab, ti,
 // ab, all — and each platform re-expresses them in its own syntax.
-import type { KwFields, Pool } from "./query.js";
+import { frameworkBucketDefs, type FrameworkSpec, type KwFields, type Pool } from "./query.js";
 
 export type PlatformKey = "ovid" | "embase" | "scopus" | "wos" | "ebsco" | "proquest" | "cochrane";
 
@@ -127,8 +127,10 @@ export function platformTerm(key: PlatformKey, kind: "keyword" | "vocab", term: 
 
 /**
  * Whole-pool query for one platform: keywords OR'd, vocabulary OR'd, the two
- * groups AND'd — the same shape buildBooleanQuery produces for the native
- * sources, so a translation is recognizably the same search.
+ * groups OR'd — one concept block, the same shape buildBooleanQuery produces
+ * for the native sources by default, so a translation is recognizably the
+ * same search. (Keywords and headings for one concept are alternatives: a
+ * record matching either belongs in the set.)
  *
  * Pooled advanced-search snippets are deliberately NOT translated: they are
  * already in a specific source's syntax (PubMed brackets, Essie AREA[...]),
@@ -136,17 +138,37 @@ export function platformTerm(key: PlatformKey, kind: "keyword" | "vocab", term: 
  * plausible-but-wrong output this module refuses to produce. Callers should
  * surface the omission rather than hide it — see `untranslated`.
  */
-export function buildPlatformQuery(key: PlatformKey, pool: Pool, kwFields: KwFields = {}): string {
+export function buildPlatformQuery(key: PlatformKey, pool: Pool, kwFields: KwFields = {}, framework?: FrameworkSpec): string {
   const p = byKey.get(key);
   if (!p) return "";
-  const groups: string[] = [];
-  const kws = (pool.keywords ?? []).map(t => p.kw(t, kwFields[t] ?? "tiab"));
+  const kwPool = pool.keywords ?? [];
   // MeSH and ERIC pools both hold controlled-vocabulary headings; a translation
   // target has one thesaurus slot, so they merge here.
-  const vocab = [...(pool.mesh ?? []), ...(pool.eric ?? [])].map(t => p.vocab(t));
-  if (kws.length) groups.push(kws.length > 1 ? `(${kws.join(" OR ")})` : kws[0]);
-  if (vocab.length) groups.push(vocab.length > 1 ? `(${vocab.join(" OR ")})` : vocab[0]);
-  return groups.join(" AND ");
+  const vocabPool = [...(pool.mesh ?? []), ...(pool.eric ?? [])];
+  // One concept block: keywords OR'd, headings OR'd, and the two OR'd together.
+  const block = (kwTerms: string[], vocabTerms: string[]): string[] => {
+    const groups: string[] = [];
+    const kws = kwTerms.map(t => p.kw(t, kwFields[t] ?? "tiab"));
+    const vocab = vocabTerms.map(t => p.vocab(t));
+    if (kws.length) groups.push(kws.length > 1 ? `(${kws.join(" OR ")})` : kws[0]);
+    if (vocab.length) groups.push(vocab.length > 1 ? `(${vocab.join(" OR ")})` : vocab[0]);
+    return groups;
+  };
+  if (!framework) return block(kwPool, vocabPool).join(" OR ");
+
+  // Framework mode: one block per bucket, blocks AND'd — the same shape
+  // buildFrameworkQuery emits natively. Kept on ONE line: Ovid and EBSCO treat
+  // each pasted line as a separate search statement.
+  const blocks = frameworkBucketDefs(framework.key, framework.buckets)
+    .map(b => {
+      const terms = framework.buckets[b.key] ?? [];
+      return block(terms.filter(t => kwPool.includes(t)), terms.filter(t => vocabPool.includes(t)));
+    })
+    .filter(groups => groups.length > 0);
+  // A block made of two groups has a bare OR between them, so it is
+  // parenthesised before the AND can rebind it. A single group is either one
+  // term or already parenthesised.
+  return blocks.map(g => g.length > 1 && blocks.length > 1 ? `(${g.join(" OR ")})` : g.join(" OR ")).join(" AND ");
 }
 
 /** Pooled snippets that were left out of every translation, so callers can say so. */
@@ -155,7 +177,7 @@ export function untranslated(pool: Pool): string[] {
 }
 
 /** The full matrix: every platform's string for one pool. */
-export function buildTranslationMatrix(pool: Pool, kwFields: KwFields = {}) {
+export function buildTranslationMatrix(pool: Pool, kwFields: KwFields = {}, framework?: FrameworkSpec) {
   return {
     caveat: PLATFORM_CAVEAT,
     untranslated: untranslated(pool),
@@ -165,7 +187,7 @@ export function buildTranslationMatrix(pool: Pool, kwFields: KwFields = {}) {
       vendor: p.vendor,
       vocabulary: p.vocabulary,
       note: p.note,
-      query: buildPlatformQuery(p.key, pool, kwFields),
+      query: buildPlatformQuery(p.key, pool, kwFields, framework),
     })),
   };
 }

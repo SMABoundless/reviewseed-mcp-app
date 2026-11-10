@@ -48,7 +48,7 @@
       },
       "kwFields": {},
       "opts": {},
-      "expected": "\"gabapentin\"[tiab] AND \"Neuralgia\"[MeSH Terms]"
+      "expected": "\"gabapentin\"[tiab] OR \"Neuralgia\"[MeSH Terms]"
     },
     {
       "name": "multiple keywords are OR'd and grouped",
@@ -130,6 +130,48 @@
       "expected": "(\"a\"[tiab] AND \"b\"[tiab]) OR (\"M1\"[MeSH Terms] AND \"M2\"[MeSH Terms])"
     },
     {
+      "name": "default join is OR: keywords and headings for one concept are alternatives",
+      "target": "pubmed",
+      "pool": {
+        "keywords": [
+          "heart attack",
+          "myocardial infarction"
+        ],
+        "mesh": [
+          "Myocardial Infarction"
+        ],
+        "eric": [],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {},
+      "opts": {},
+      "expected": "(\"heart attack\"[tiab] OR \"myocardial infarction\"[tiab]) OR \"Myocardial Infarction\"[MeSH Terms]"
+    },
+    {
+      "name": "explicit joinOp AND still intersects the keyword and heading groups",
+      "target": "pubmed",
+      "pool": {
+        "keywords": [
+          "heart attack",
+          "myocardial infarction"
+        ],
+        "mesh": [
+          "Myocardial Infarction"
+        ],
+        "eric": [],
+        "queries": [],
+        "ericQueries": [],
+        "ctQueries": []
+      },
+      "kwFields": {},
+      "opts": {
+        "joinOp": "AND"
+      },
+      "expected": "(\"heart attack\"[tiab] OR \"myocardial infarction\"[tiab]) AND \"Myocardial Infarction\"[MeSH Terms]"
+    },
+    {
       "name": "REGRESSION: lone pooled query emits bare, no redundant parens",
       "target": "pubmed",
       "pool": {
@@ -162,7 +204,7 @@
       },
       "kwFields": {},
       "opts": {},
-      "expected": "(\"A\" OR \"B\") AND (\"C\" OR \"D\")"
+      "expected": "(\"A\" OR \"B\") OR (\"C\" OR \"D\")"
     },
     {
       "name": "REGRESSION: partially-parenthesized fragment STILL gets a protective wrap",
@@ -181,7 +223,7 @@
       },
       "kwFields": {},
       "opts": {},
-      "expected": "\"kw\"[tiab] AND ((A) OR (B))"
+      "expected": "\"kw\"[tiab] OR ((A) OR (B))"
     },
     {
       "name": "unwrapped multi-operator fragment gets a protective wrap",
@@ -200,7 +242,7 @@
       },
       "kwFields": {},
       "opts": {},
-      "expected": "\"kw\"[tiab] AND (A OR B)"
+      "expected": "\"kw\"[tiab] OR (A OR B)"
     },
     {
       "name": "eric target uses field prefixes and the eric descriptor pool",
@@ -221,7 +263,7 @@
       },
       "kwFields": {},
       "opts": {},
-      "expected": "(title:\"reading\" OR description:\"reading\") AND subject:\"Reading Comprehension\""
+      "expected": "(title:\"reading\" OR description:\"reading\") OR subject:\"Reading Comprehension\""
     },
     {
       "name": "eric honors ti/ab/all field tags",
@@ -263,7 +305,7 @@
       },
       "kwFields": {},
       "opts": {},
-      "expected": "\"gabapentin\" AND (AREA[ConditionSearch]\"Neuralgia\" OR AREA[InterventionSearch]\"Neuralgia\")"
+      "expected": "\"gabapentin\" OR (AREA[ConditionSearch]\"Neuralgia\" OR AREA[InterventionSearch]\"Neuralgia\")"
     },
     {
       "name": "trials keyword with ti tag narrows to BriefTitle",

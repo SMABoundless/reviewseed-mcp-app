@@ -195,6 +195,55 @@ test("advanced_search assembles per-source syntax without running when run:false
   assert.equal(ct.query, 'AREA[ConditionSearch]"heart failure"');
 });
 
+// ── Brief records + scope notes by label ────────────────────────────────────
+test("search with detail \"brief\" drops abstracts and trims authors, keeping the indexing", async () => {
+  const rec = { pmid: "111", title: "T", abstract: "A long abstract. ".repeat(120), authors: ["A", "B", "C", "D", "E"], mesh: ["Asthma"], keywords: ["wheeze"] };
+  const routes = [
+    { match: "esearch.fcgi", body: esearchJson(["111"]) },
+    { match: "efetch.fcgi", body: efetchXml([rec]) },
+  ];
+  mock = installMockFetch(routes);
+  const full = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
+  mock.restore();
+  mock = installMockFetch(routes);
+  const brief = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma", detail: "brief", matchTerms: ["abstract"] }));
+  assert.ok(full.articles[0].abstract.length > 100, "full keeps the abstract");
+  assert.equal(full.detail, undefined);
+  assert.equal(brief.detail, "brief");
+  assert.match(brief.note, /abstracts omitted/);
+  assert.equal(brief.articles[0].abstract, "");
+  assert.equal(brief.articles[0].authors.length, 4);
+  assert.equal(brief.articles[0].authors[3], "et al.");
+  assert.deepEqual(brief.articles[0].mesh, full.articles[0].mesh);
+  assert.deepEqual(brief.articles[0].keywords, full.articles[0].keywords);
+  // matchedVia reads the abstract, so it must be computed BEFORE the abstract is dropped.
+  assert.deepEqual(brief.articles[0].matchedVia, ["abstract"]);
+  assert.ok(JSON.stringify(brief).length < JSON.stringify(full).length / 2);
+});
+
+test("vocab_details finds the scope note from the label alone", async () => {
+  mock = installMockFetch([
+    { match: "lookup/descriptor", body: JSON.stringify([{ resource: "http://id.nlm.nih.gov/mesh/D064866", label: "Mindfulness" }]) },
+    { match: "lookup/details", body: JSON.stringify({ terms: [{ label: "Mindfulness" }, { label: "Mindful Awareness" }] }) },
+    { match: "scopeNote", body: JSON.stringify({ results: { bindings: [{ note: { value: "A psychological state of awareness." } }] } }) },
+    { match: "sparql", body: JSON.stringify({ results: { bindings: [] } }) },
+  ]);
+  const r = payload(await call("reviewseed_vocab_details", { vocab: "mesh", label: "Mindfulness" }));
+  assert.equal(r.id, "D064866");
+  assert.equal(r.scopeNote, "A psychological state of awareness.");
+  assert.equal(r.scopeNoteStatus, undefined);
+});
+
+test("vocab_details explains an empty scope note instead of returning a bare blank", async () => {
+  mock = installMockFetch([
+    { match: "lookup/descriptor", body: "[]" },
+    { match: "sparql", body: JSON.stringify({ results: { bindings: [] } }) },
+  ]);
+  const r = payload(await call("reviewseed_vocab_details", { vocab: "mesh", label: "Not A Heading" }));
+  assert.equal(r.scopeNote, "");
+  assert.match(r.scopeNoteStatus, /No MeSH heading is named exactly/);
+});
+
 // ── Assemble query (headless) ───────────────────────────────────────────────
 
 test("assemble_query builds a boolean string with no UI and no network", async () => {
@@ -202,10 +251,11 @@ test("assemble_query builds a boolean string with no UI and no network", async (
     source: "pubmed", mode: "boolean",
     pool: { keywords: ["gabapentin"], mesh: ["Neuralgia"], eric: [], queries: [], ericQueries: [], ctQueries: [] },
   }));
-  assert.equal(r.query, '"gabapentin"[tiab] AND "Neuralgia"[MeSH Terms]');
+  assert.equal(r.query, '"gabapentin"[tiab] OR "Neuralgia"[MeSH Terms]');
 });
 
-// Pins the OR/OR/AND operator defaults when booleanOpts is omitted entirely.
+// Pins the OR/OR/OR operator defaults (keywords and headings for one concept
+// are alternatives, so the groups are OR'd too) when booleanOpts is omitted entirely.
 // Two layers supply them: the schema (.prefault({}) in server.ts — zod 4's
 // .default({}) skips nested defaults) and buildBooleanQuery's own `??`
 // fallbacks. This guards the end result if either layer changes.
@@ -215,8 +265,19 @@ test("assemble_query applies every booleanOpts default when booleanOpts is omitt
     pool: { keywords: ["heart attack", "myocardial infarction"], mesh: ["Myocardial Infarction", "Angina Pectoris"] },
   }));
   assert.equal(r.query,
-    '("heart attack"[tiab] OR "myocardial infarction"[tiab]) AND ' +
+    '("heart attack"[tiab] OR "myocardial infarction"[tiab]) OR ' +
     '("Myocardial Infarction"[MeSH Terms] OR "Angina Pectoris"[MeSH Terms])');
+});
+
+test("assemble_query keeps a Custom framework's fourth concept instead of dropping it", async () => {
+  // Custom allows 1-6 concept groups but its catalogue entry lists three. A term
+  // in c4 used to vanish from the query with no error.
+  const r = payload(await call("reviewseed_assemble_query", {
+    source: "pubmed", mode: "framework",
+    pool: { keywords: ["a", "b", "c", "d"] },
+    framework: { key: "Custom", buckets: { c1: ["a"], c2: ["b"], c3: ["c"], c4: ["d"] } },
+  }));
+  assert.equal(r.query, '"a"[tiab]\nAND "b"[tiab]\nAND "c"[tiab]\nAND "d"[tiab]');
 });
 
 test("assemble_query in framework mode with no key lists all ten frameworks plus Custom", async () => {
@@ -779,6 +840,67 @@ test("validate_recall calls a sole term untestable rather than pretending it's c
   assert.equal(r.searchesRun, 1, "no search is wasted on an empty variant");
 });
 
+// ── Concept structure survives the tools that rebuild a query ───────────────
+const FW_POOL = { keywords: ["teen", "mindfulness"], mesh: ["Adolescent", "Anxiety"], eric: [], queries: [], ericQueries: [], ctQueries: [] };
+const FW_SPEC = { key: "PICO", buckets: { P: ["teen", "Adolescent"], I: ["mindfulness"], O: ["Anxiety"] } };
+const FW_QUERY = '("teen"[tiab] OR "Adolescent"[MeSH Terms])\nAND "mindfulness"[tiab]\nAND "Anxiety"[MeSH Terms]';
+
+test("validate_recall with a framework never calls a concept's only term prunable", async () => {
+  // Every search returns both seeds. For teen/Adolescent that means prunable.
+  // For mindfulness and Anxiety — each the only term of its concept — removal
+  // drops the concept and BROADENS the search, so "no seed lost" proves nothing.
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111", "222"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }, { pmid: "222" }]) },
+  ]);
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: FW_QUERY, seedIds: ["111", "222"],
+    pool: FW_POOL, framework: FW_SPEC, leaveOneOut: true,
+  }));
+  assert.deepEqual(r.prunable.sort(), ["Adolescent", "teen"]);
+  assert.deepEqual(r.untestable.sort(), ["Anxiety", "mindfulness"]);
+  const sole = r.criticality.find((c: any) => c.term === "mindfulness");
+  assert.equal(sole.critical, null);
+  assert.equal(sole.soleInConcept, "Intervention");
+  assert.match(sole.note, /removes the whole concept/);
+  assert.equal(r.leaveOneOutBaseline, undefined, "query matches the framework rebuild, so no separate baseline");
+  assert.equal(r.searchesRun, 3, "one baseline plus the two testable terms");
+});
+
+test("validate_recall says so when the pool does not rebuild to the query it was given", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }]) },
+  ]);
+  // A multi-concept query, but no framework: the flat pool rebuilds to one big OR.
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: FW_QUERY, seedIds: ["111"], pool: FW_POOL, leaveOneOut: true,
+  }));
+  assert.match(r.leaveOneOutBaseline.query, /^\("teen"\[tiab\] OR "mindfulness"\[tiab\]\) OR /);
+  assert.match(r.leaveOneOutBaseline.note, /pass `framework`/);
+});
+
+test("compare_queries' ladder keeps the framework, and flags a rung that lost a concept", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }]) },
+  ]);
+  const r = payload(await call("reviewseed_compare_queries", {
+    source: "pubmed", autoFrom: { pool: FW_POOL, framework: FW_SPEC },
+  }));
+  assert.equal(r.comparison[0].query, FW_QUERY);
+  const vocabOnly = r.comparison.find((c: any) => c.label === "Subject headings only");
+  assert.equal(vocabOnly.query, '"Adolescent"[MeSH Terms]\nAND "Anxiety"[MeSH Terms]');
+  assert.match(vocabOnly.caution, /Intervention has no terms of this kind/);
+  assert.equal(r.comparison[0].caution, undefined);
+  assert.ok(r.skipped.some((x: any) => x.key === "keywords-and" && /framework/.test(x.reason)));
+});
+
+test("translate_query with a framework ANDs the concepts instead of OR'ing the whole pool", async () => {
+  const r = payload(await call("reviewseed_translate_query", { pool: FW_POOL, framework: FW_SPEC, platforms: ["ovid"] }));
+  assert.equal(r.platforms[0].query, '("teen".ti,ab. OR exp Adolescent/) AND "mindfulness".ti,ab. AND exp Anxiety/');
+});
+
 // ── Translate query (headless, emit-only) ───────────────────────────────────
 
 test("translate_query emits every platform's syntax with no network", async () => {
@@ -786,9 +908,9 @@ test("translate_query emits every platform's syntax with no network", async () =
     pool: { keywords: ["heart attack"], mesh: ["Myocardial Infarction"], eric: [], queries: [], ericQueries: [], ctQueries: [] },
   }));
   const by = Object.fromEntries(r.platforms.map((p: any) => [p.key, p.query]));
-  assert.equal(by.ovid, '"heart attack".ti,ab. AND exp Myocardial Infarction/');
-  assert.equal(by.embase, "'heart attack':ti,ab AND 'Myocardial Infarction'/exp");
-  assert.equal(by.cochrane, '"heart attack":ti,ab AND [mh "Myocardial Infarction"]');
+  assert.equal(by.ovid, '"heart attack".ti,ab. OR exp Myocardial Infarction/');
+  assert.equal(by.embase, "'heart attack':ti,ab OR 'Myocardial Infarction'/exp");
+  assert.equal(by.cochrane, '"heart attack":ti,ab OR [mh "Myocardial Infarction"]');
 });
 
 test("translate_query always carries the untested caveat — the strings cannot be verified here", async () => {

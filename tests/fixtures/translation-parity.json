@@ -60,11 +60,11 @@
   ],
   "queryCases": [
     {
-      "name": "ovid: keywords OR'd, headings OR'd, groups AND'd",
+      "name": "ovid: keywords OR'd, headings OR'd, groups OR'd",
       "platform": "ovid",
       "pool": { "keywords": ["heart attack", "MI"], "mesh": ["Myocardial Infarction"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
       "kwFields": { "MI": "ti" },
-      "expected": "(\"heart attack\".ti,ab. OR \"MI\".ti.) AND exp Myocardial Infarction/"
+      "expected": "(\"heart attack\".ti,ab. OR \"MI\".ti.) OR exp Myocardial Infarction/"
     },
     {
       "name": "embase: single keyword needs no group parens",
@@ -85,7 +85,31 @@
       "platform": "cochrane",
       "pool": { "keywords": ["mindfulness"], "mesh": ["Mindfulness", "Meditation"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
       "kwFields": {},
-      "expected": "\"mindfulness\":ti,ab AND ([mh \"Mindfulness\"] OR [mh \"Meditation\"])"
+      "expected": "\"mindfulness\":ti,ab OR ([mh \"Mindfulness\"] OR [mh \"Meditation\"])"
+    },
+    {
+      "name": "framework, ovid: OR inside each concept, AND across, on one line; unplaced terms are left out",
+      "platform": "ovid",
+      "pool": { "keywords": ["teen", "mindfulness", "yoga"], "mesh": ["Adolescent", "Anxiety"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "framework": { "key": "PICO", "buckets": { "P": ["teen", "Adolescent"], "I": ["mindfulness"], "O": ["Anxiety"] } },
+      "expected": "(\"teen\".ti,ab. OR exp Adolescent/) AND \"mindfulness\".ti,ab. AND exp Anxiety/"
+    },
+    {
+      "name": "framework, cochrane: a concept that is already one parenthesised group is not wrapped twice",
+      "platform": "cochrane",
+      "pool": { "keywords": ["teen", "youth", "mindfulness"], "mesh": ["Anxiety"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "framework": { "key": "PICO", "buckets": { "P": ["teen", "youth"], "I": ["mindfulness"], "O": ["Anxiety"] } },
+      "expected": "(\"teen\":ti,ab OR \"youth\":ti,ab) AND \"mindfulness\":ti,ab AND [mh \"Anxiety\"]"
+    },
+    {
+      "name": "framework with one filled concept needs no outer parentheses",
+      "platform": "embase",
+      "pool": { "keywords": ["teen"], "mesh": ["Adolescent"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "framework": { "key": "PICO", "buckets": { "P": ["teen", "Adolescent"] } },
+      "expected": "'teen':ti,ab OR 'Adolescent'/exp"
     },
     {
       "name": "empty pool translates to an empty string, not a stray operator",

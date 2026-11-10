@@ -15,7 +15,14 @@
 // Every variant is built by the SAME buildBooleanQuery the app uses, never by
 // string surgery on the finished query. A variant assembled differently from the
 // real thing would be measuring something else.
-import { buildBooleanQuery, type KwFields, type Pool } from "./query.js";
+//
+// CONCEPT STRUCTURE. A flat pool is ONE concept (everything OR'd). A question
+// with several concepts lives in a framework, so every function here takes an
+// optional `framework`: the rungs are then built by buildFrameworkQuery — OR
+// within a bucket, AND across buckets — and the ladder varies the terms inside
+// that structure instead of flattening it. Without this, a four-concept pool
+// "as built" is an OR of everything, and its rungs measure nothing useful.
+import { activeConcepts, buildBooleanQuery, buildFrameworkQuery, type FrameworkSpec, type KwFields, type Pool } from "./query.js";
 import type { Source } from "./types.js";
 
 /** buildBooleanQuery's operator options, named here so the ladder can vary them. */
@@ -27,6 +34,9 @@ export interface Variant {
   /** What question this variant answers. */
   rationale: string;
   query: string;
+  /** Framework mode only: concepts with no terms left in this rung, which
+   *  therefore drop out of the AND. The rung is then not a clean subset. */
+  droppedConcepts?: string[];
 }
 
 export interface SkippedVariant {
@@ -66,11 +76,19 @@ export function buildQueryVariants(
   kwFields: KwFields = {},
   opts: BooleanOpts = {},
   source: Source = "pubmed",
+  framework?: FrameworkSpec,
 ): VariantSet {
   const p = withAllPools(pool);
-  const kw = p.keywords ?? [];
-  const vocab = [...(p.mesh ?? []), ...(p.eric ?? [])];
-  const build = (pl: Pool, kf: KwFields, o: BooleanOpts) => buildBooleanQuery(pl, kf, o, source);
+  const build = (pl: Pool, kf: KwFields, o: BooleanOpts) => framework
+    ? buildFrameworkQuery(framework.key, framework.buckets, pl, kf, source)
+    : buildBooleanQuery(pl, kf, o, source);
+  // In framework mode only bucketed terms are in the query, so only they count
+  // when deciding whether a rung can differ from the baseline.
+  const concepts = framework ? activeConcepts(framework, p, source) : [];
+  const placed = new Set(concepts.flatMap(c => c.terms));
+  const inQuery = (t: string) => !framework || placed.has(t);
+  const kw = (p.keywords ?? []).filter(inQuery);
+  const vocab = [...(p.mesh ?? []), ...(p.eric ?? [])].filter(inQuery);
 
   const asBuilt = build(p, kwFields, opts);
   const variants: Variant[] = [];
@@ -83,37 +101,53 @@ export function buildQueryVariants(
     query: asBuilt,
   });
 
-  const add = (key: string, label: string, rationale: string, query: string, skipReason?: string) => {
+  // `pl` is the pool the rung was built from, so a framework rung can report
+  // the concepts it lost.
+  const add = (key: string, label: string, rationale: string, pl: Pool, kf: KwFields, o: BooleanOpts, skipReason?: string) => {
     if (skipReason) { skipped.push({ key, label, reason: skipReason }); return; }
+    const query = build(pl, kf, o);
     if (!query.trim()) { skipped.push({ key, label, reason: "Would produce an empty query." }); return; }
     if (query === asBuilt) { skipped.push({ key, label, reason: "Identical to the query as built, so it would measure nothing." }); return; }
+    if (framework) {
+      const kept = new Set(activeConcepts(framework, pl, source).map(c => c.key));
+      const dropped = concepts.filter(c => !kept.has(c.key)).map(c => c.label);
+      if (dropped.length) {
+        variants.push({
+          key, label, query, droppedConcepts: dropped,
+          rationale: `${rationale} CAUTION: ${dropped.join(", ")} ${dropped.length === 1 ? "has" : "have"} no terms of this kind, ` +
+            "so that concept drops out of the AND here. This rung can be LARGER than the baseline and is not a clean subset of it.",
+        });
+        return;
+      }
+    }
     variants.push({ key, label, rationale, query });
   };
 
   add("vocab-only", "Subject headings only",
     "How much of your result set rests on controlled vocabulary alone — the precise half.",
-    build({ ...p, keywords: [] }, kwFields, opts),
+    { ...p, keywords: [] }, kwFields, opts,
     kw.length === 0 ? "No keywords pooled, so this is already the query as built." : undefined);
 
   add("keywords-only", "Free text only",
     "How much rests on free text alone — the half that reaches unindexed and recent records.",
-    build({ ...p, mesh: [], eric: [] }, kwFields, opts),
+    { ...p, mesh: [], eric: [] }, kwFields, opts,
     vocab.length === 0 ? "No subject headings pooled, so this is already the query as built." : undefined);
 
   add("keywords-all-fields", "Free text broadened to all fields",
     "The recall ceiling for your keywords: what searching every field, not just title and abstract, would add.",
-    build(p, forceFields(p, "all"), opts),
+    p, forceFields(p, "all"), opts,
     kw.length === 0 ? "No keywords to broaden." : undefined);
 
   add("keywords-title-only", "Free text narrowed to titles",
     "The precision floor: how much survives if a keyword must appear in the title.",
-    build(p, forceFields(p, "ti"), opts),
+    p, forceFields(p, "ti"), opts,
     kw.length === 0 ? "No keywords to narrow." : undefined);
 
   add("keywords-and", "Free text joined with AND",
     "What happens if every keyword must be present rather than any — usually a steep drop, and a precision test.",
-    build(p, kwFields, { ...opts, kwOp: "AND" }),
-    kw.length < 2 ? "Needs at least two keywords for AND to differ from OR." : undefined);
+    p, kwFields, { ...opts, kwOp: "AND" },
+    framework ? "Not applicable to a framework query: terms inside a concept are always OR'd, and the concepts are already AND'd."
+      : kw.length < 2 ? "Needs at least two keywords for AND to differ from OR." : undefined);
 
   return { variants, skipped };
 }
@@ -125,6 +159,10 @@ export interface LeaveOneOutVariant {
   query: string;
   /** True when removing it leaves nothing to run. */
   empty: boolean;
+  /** Framework mode only: the term is the last one in this concept, so removing
+   *  it removes the concept and BROADENS the query. Its marginal yield cannot
+   *  be read from this variant. */
+  soleInConcept?: string;
 }
 
 /**
@@ -134,23 +172,38 @@ export interface LeaveOneOutVariant {
  * A term whose removal changes nothing is a candidate for pruning — but only for
  * THIS pool, since terms overlap; dropping two zero-yield terms can still lose
  * records that only they shared.
+ *
+ * With a `framework`, the query is rebuilt with its concept structure intact and
+ * only terms placed in a bucket are tested (an unplaced term is not in the query).
  */
 export function leaveOneOutVariants(
   pool: Pool,
   kwFields: KwFields = {},
   opts: BooleanOpts = {},
   source: Source = "pubmed",
+  framework?: FrameworkSpec,
 ): LeaveOneOutVariant[] {
   const p = withAllPools(pool);
+  const concepts = framework ? activeConcepts(framework, p, source) : [];
+  const placed = new Set(concepts.flatMap(c => c.terms));
+  const inQuery = (t: string) => !framework || placed.has(t);
   const targets: Array<{ term: string; pool: "keywords" | "mesh" | "eric" }> = [
-    ...(p.keywords ?? []).map(term => ({ term, pool: "keywords" as const })),
-    ...(p.mesh ?? []).map(term => ({ term, pool: "mesh" as const })),
-    ...(p.eric ?? []).map(term => ({ term, pool: "eric" as const })),
+    ...(p.keywords ?? []).filter(inQuery).map(term => ({ term, pool: "keywords" as const })),
+    ...(p.mesh ?? []).filter(inQuery).map(term => ({ term, pool: "mesh" as const })),
+    ...(p.eric ?? []).filter(inQuery).map(term => ({ term, pool: "eric" as const })),
   ];
   return targets.map(t => {
     const without = { ...p, [t.pool]: (p[t.pool] ?? []).filter(x => x !== t.term) };
-    const query = buildBooleanQuery(without, kwFields, opts, source);
-    return { term: t.term, pool: t.pool, query, empty: !query.trim() };
+    const query = framework
+      ? buildFrameworkQuery(framework.key, framework.buckets, without, kwFields, source)
+      : buildBooleanQuery(without, kwFields, opts, source);
+    const out: LeaveOneOutVariant = { term: t.term, pool: t.pool, query, empty: !query.trim() };
+    if (framework) {
+      const kept = new Set(activeConcepts(framework, without, source).map(c => c.key));
+      const lost = concepts.find(c => !kept.has(c.key));
+      if (lost) out.soleInConcept = lost.label;
+    }
+    return out;
   });
 }
 

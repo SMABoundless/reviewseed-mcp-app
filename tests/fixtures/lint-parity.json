@@ -27,6 +27,46 @@
       "expected": []
     },
     {
+      "name": "AND and OR at the same level with no parentheses",
+      "input": { "source": "pubmed", "query": "\"asthma\"[tiab] OR \"wheeze\"[tiab] AND \"child\"[tiab]" },
+      "expected": [{ "rule": "mixed-operators-ungrouped", "severity": "warning", "domain": "operators" }]
+    },
+    {
+      "name": "AND and OR mixed inside one bracket, under a clean top level",
+      "input": { "source": "pubmed", "query": "(\"asthma\"[tiab] OR \"wheeze\"[tiab] AND \"child\"[tiab]) AND \"Asthma\"[MeSH Terms]" },
+      "expected": [{ "rule": "mixed-operators-ungrouped", "severity": "warning", "domain": "operators" }]
+    },
+    {
+      "name": "a framework query — OR inside each group, AND between — is properly grouped",
+      "input": { "source": "pubmed", "query": "(\"teen\"[tiab] OR \"Adolescent\"[MeSH Terms])\nAND (\"mindfulness\"[tiab] OR \"Mindfulness\"[MeSH Terms])" },
+      "expected": []
+    },
+    {
+      "name": "the words AND and OR inside a quoted phrase are content, not operators",
+      "input": { "source": "pubmed", "query": "\"black AND white\"[tiab] OR \"grey\"[tiab]" },
+      "expected": [{ "rule": "stopword-in-phrase", "severity": "info", "domain": "text-word", "subject": "black AND white" }]
+    },
+    {
+      "name": "NOT can remove relevant records",
+      "input": { "source": "pubmed", "query": "\"asthma\"[tiab] NOT \"adult\"[tiab]" },
+      "expected": [{ "rule": "not-operator", "severity": "warning", "domain": "operators" }]
+    },
+    {
+      "name": "Cochrane's animal-studies exclusion is a deliberate, published NOT and is not flagged",
+      "input": { "source": "pubmed", "query": "(\"asthma\"[tiab]) AND (randomized controlled trial[pt] OR placebo[tiab] NOT (animals[mh] NOT humans[mh]))" },
+      "expected": []
+    },
+    {
+      "name": "the same exclusion attached as its own filter (double parentheses) is not flagged either",
+      "input": { "source": "pubmed", "query": "(asthma) NOT ((animals[mh] NOT humans[mh]))" },
+      "expected": []
+    },
+    {
+      "name": "a misgrouped query with a NOT reports both problems",
+      "input": { "source": "pubmed", "query": "(\"mindfulness\"[tiab] OR \"meditation\"[tiab] AND \"adolescent\"[tiab]) NOT \"adult\"[tiab]" },
+      "expected": [{ "rule": "mixed-operators-ungrouped", "severity": "warning", "domain": "operators" }, { "rule": "not-operator", "severity": "warning", "domain": "operators" }]
+    },
+    {
       "name": "unclosed parenthesis",
       "input": { "source": "pubmed", "query": "(\"asthma\"[tiab] AND \"Asthma\"[MeSH Terms]" },
       "expected": [{ "rule": "unbalanced-parentheses", "severity": "error", "domain": "syntax" }]

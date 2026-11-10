@@ -11,7 +11,10 @@
 // filter and you silently change the recall of somebody's systematic review, and
 // nobody will notice until peer review — or never. So:
 //
-//   1. Every string below was executed against the live API on 2026-08-01 and
+//   1. Every string below was executed against the live API on 2026-08-01 (the
+//      two Cochrane trial filters again on 2026-11-10, when the entry labelled
+//      "sensitivity-maximising" was found to hold the sensitivity- AND
+//      precision-maximising string; both versions are now listed) and
 //      confirmed to parse and to narrow a topic by a plausible margin. A filter
 //      that errors, or that doesn't change the count, is a broken filter.
 //   2. Every entry names its publisher and citation. A hedge without provenance
@@ -42,7 +45,7 @@ export interface Hedge {
 }
 
 export const HEDGE_CAVEAT =
-  "Each filter below is a point-in-time transcription, verified to run on 2026-08-01. " +
+  "Each filter below is a point-in-time transcription, verified to run on 2026-08-01 (the Cochrane trial filters on 2026-11-10). " +
   "Publishers revise filters — check the citation against the current published version before " +
   "relying on it in a review, and report the version you used.";
 
@@ -51,13 +54,25 @@ export const HEDGES: Hedge[] = [
     id: "pubmed-rct-cochrane-sensitivity",
     source: "pubmed",
     label: "Randomised trials — sensitivity-maximising",
-    purpose: "Finds randomised and controlled clinical trials, favouring recall over precision.",
+    purpose: "Finds randomised and controlled clinical trials with the highest recall Cochrane publishes. The version for a systematic review that must not miss trials.",
+    strategy: "randomized controlled trial[pt] OR controlled clinical trial[pt] OR randomized[tiab] OR placebo[tiab] OR drug therapy[sh] OR randomly[tiab] OR trial[tiab] OR groups[tiab] NOT (animals[mh] NOT humans[mh])",
+    combine: "and",
+    publisher: "Cochrane",
+    citation: "Cochrane Highly Sensitive Search Strategy for identifying randomized trials in MEDLINE: sensitivity-maximizing version (2008 revision), PubMed format. Lefebvre C, Manheimer E, Glanville J. Cochrane Handbook for Systematic Reviews of Interventions, ch. 6 (v5.1.0, 2011); carried forward in the current Handbook's ch. 4 technical supplement. Transcribed from work.cochrane.org/pubmed on 2026-11-10.",
+    validated: true,
+    tradeoff: "Built for recall: `drug therapy[sh]`, `trial[tiab]` and `groups[tiab]` pull in many non-trials, which is the intended cost. Expect roughly three times the records of the sensitivity- and precision-maximising version. Don't use it to estimate how many trials exist.",
+  },
+  {
+    id: "pubmed-rct-cochrane-sens-prec",
+    source: "pubmed",
+    label: "Randomised trials — sensitivity- and precision-maximising",
+    purpose: "Finds randomised and controlled clinical trials with a smaller, cleaner set than the sensitivity-maximising version, at some cost in recall.",
     strategy: "randomized controlled trial[pt] OR controlled clinical trial[pt] OR randomized[tiab] OR placebo[tiab] OR clinical trials as topic[mesh:noexp] OR randomly[tiab] OR trial[ti] NOT (animals[mh] NOT humans[mh])",
     combine: "and",
     publisher: "Cochrane",
-    citation: "Cochrane Handbook for Systematic Reviews of Interventions, ch. 4 — sensitivity-maximising version for PubMed",
+    citation: "Cochrane Highly Sensitive Search Strategy for identifying randomized trials in MEDLINE: sensitivity- and precision-maximizing version (2008 revision), PubMed format. Lefebvre C, Manheimer E, Glanville J. Cochrane Handbook for Systematic Reviews of Interventions, ch. 6 (v5.1.0, 2011); carried forward in the current Handbook's ch. 4 technical supplement. Transcribed from work.cochrane.org/pubmed on 2026-11-10.",
     validated: true,
-    tradeoff: "Built for recall: it will pull in non-trials, which is the intended cost. Don't use it to estimate how many trials exist.",
+    tradeoff: "Trades some recall for fewer non-trials: `trial` must be in the title and `drug therapy[sh]` and `groups[tiab]` are dropped. Reasonable for scoping or a rapid review; for a full systematic review Cochrane's sensitivity-maximising version is the safer choice.",
   },
   {
     id: "pubmed-systematic-reviews",
