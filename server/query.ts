@@ -97,6 +97,21 @@ export const FRAMEWORKS: Record<string, FrameworkDef> = {
   Custom:  { label: "Custom",  full: "Build your own concept groups", tag: "Flexible", blurb: "Define your own buckets (1–6).", buckets: [{ key: "c1", label: "Concept 1" }, { key: "c2", label: "Concept 2" }, { key: "c3", label: "Concept 3" }], custom: true },
 };
 
+/**
+ * The bucket definitions a framework query is built from. For the fixed
+ * frameworks that is the catalogue entry. Custom is user-defined (1-6 concept
+ * groups), so any bucket key the caller supplies beyond the three defaults is
+ * honoured in the order given — otherwise terms placed in a fourth concept
+ * would silently vanish from the query.
+ */
+export function frameworkBucketDefs(frameworkKey: string, buckets: Record<string, string[]>): FrameworkBucketDef[] {
+  const fw = FRAMEWORKS[frameworkKey];
+  if (!fw) throw new Error(`Unknown framework "${frameworkKey}"`);
+  if (!fw.custom) return fw.buckets;
+  const known = new Set(fw.buckets.map(b => b.key));
+  return [...fw.buckets, ...Object.keys(buckets).filter(k => !known.has(k)).map(k => ({ key: k, label: k }))];
+}
+
 // buckets: bucket key -> term labels placed in that bucket. Each term's type
 // (keyword / vocab / assembled-query) is resolved by pool membership, same
 // as the website's FrameworkBuilder.
@@ -107,12 +122,11 @@ export function buildFrameworkQuery(
   kwFields: KwFields,
   target: Source,
 ): string {
-  const fw = FRAMEWORKS[frameworkKey];
-  if (!fw) throw new Error(`Unknown framework "${frameworkKey}"`);
+  const defs = frameworkBucketDefs(frameworkKey, buckets);
   const activeQueries = target === "eric" ? pool.ericQueries : target === "trials" ? pool.ctQueries : pool.queries;
   const vocabPool = target === "eric" ? pool.eric : pool.mesh;
 
-  return fw.buckets.map(b => {
+  return defs.map(b => {
     const terms = buckets[b.key] ?? [];
     if (!terms.length) return null;
     const vocab = terms.filter(t => vocabPool.includes(t));
@@ -151,12 +165,11 @@ export function activeConcepts(
   pool: Pool,
   target: Source,
 ): Array<{ key: string; label: string; terms: string[] }> {
-  const fw = FRAMEWORKS[framework.key];
-  if (!fw) throw new Error(`Unknown framework "${framework.key}"`);
+  const defs = frameworkBucketDefs(framework.key, framework.buckets);
   const queries = target === "eric" ? pool.ericQueries : target === "trials" ? pool.ctQueries : pool.queries;
   const vocab = target === "eric" ? pool.eric : pool.mesh;
   const live = new Set([...(pool.keywords ?? []), ...(vocab ?? []), ...(queries ?? [])]);
-  return fw.buckets
+  return defs
     .map(b => ({ key: b.key, label: b.label, terms: (framework.buckets[b.key] ?? []).filter(t => live.has(t)) }))
     .filter(b => b.terms.length > 0);
 }

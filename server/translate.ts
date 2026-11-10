@@ -14,7 +14,7 @@
 //
 // The four field tags are the same ones the rest of ReviewSeed uses — tiab, ti,
 // ab, all — and each platform re-expresses them in its own syntax.
-import { FRAMEWORKS, type FrameworkSpec, type KwFields, type Pool } from "./query.js";
+import { frameworkBucketDefs, type FrameworkSpec, type KwFields, type Pool } from "./query.js";
 
 export type PlatformKey = "ovid" | "embase" | "scopus" | "wos" | "ebsco" | "proquest" | "cochrane";
 
@@ -159,9 +159,7 @@ export function buildPlatformQuery(key: PlatformKey, pool: Pool, kwFields: KwFie
   // Framework mode: one block per bucket, blocks AND'd — the same shape
   // buildFrameworkQuery emits natively. Kept on ONE line: Ovid and EBSCO treat
   // each pasted line as a separate search statement.
-  const fw = FRAMEWORKS[framework.key];
-  if (!fw) throw new Error(`Unknown framework "${framework.key}"`);
-  const blocks = fw.buckets
+  const blocks = frameworkBucketDefs(framework.key, framework.buckets)
     .map(b => {
       const terms = framework.buckets[b.key] ?? [];
       return block(terms.filter(t => kwPool.includes(t)), terms.filter(t => vocabPool.includes(t)));

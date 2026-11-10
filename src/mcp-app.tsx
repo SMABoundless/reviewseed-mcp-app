@@ -583,6 +583,16 @@ function FrameworkBuilder({ c, source, pool, kwFields }: BuilderProps) {
     setDragTerm(null);
   };
   const removeFrom = (key: string, term: string) => setBuckets(p => ({ ...p, [key]: (p[key] ?? []).filter(t => t !== term) }));
+  // Pick-then-place: the route into a bucket that needs no mouse drag. Pick one
+  // or more terms (click, tap, Enter or Space), then press "Add here" on a bucket.
+  const [picked, setPicked] = useState(new Set<string>());
+  const togglePick = (t: string) => setPicked(p => { const n = new Set(p); n.has(t) ? n.delete(t) : n.add(t); return n; });
+  const livePicked = unplaced.filter(t => picked.has(t));
+  const placeInto = (key: string) => {
+    if (!livePicked.length) return;
+    setBuckets(p => ({ ...p, [key]: [...(p[key] ?? []).filter(t => !livePicked.includes(t)), ...livePicked] }));
+    setPicked(new Set());
+  };
 
   const query = buildFrameworkQuery(fwKey === "Custom" ? "Custom" : fwKey, buckets, pool, kwFields, source);
   const copy = async () => { try { await navigator.clipboard.writeText(query.replace(/\n/g, " ")); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* clipboard unavailable */ } };
@@ -601,13 +611,13 @@ function FrameworkBuilder({ c, source, pool, kwFields }: BuilderProps) {
         </select>
         <span style={{ fontSize: 11.5, color: c.ink3, fontFamily: SANS }}>{fw.full}</span>
       </div>
-      <p style={{ fontSize: 12, color: c.ink3, marginTop: 0, fontFamily: SANS }}>{fw.blurb} Drag terms into a bucket; terms within a bucket are OR'd, buckets are AND'd.</p>
+      <p style={{ fontSize: 12, color: c.ink3, marginTop: 0, fontFamily: SANS }}>{fw.blurb} Pick terms, then choose a bucket (or drag them in); terms within a bucket are OR'd, buckets are AND'd.</p>
 
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 6 }}>Term pool — drag to a bucket</div>
+        <div style={{ fontSize: 9.5, fontFamily: MONO, color: c.ink3, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 6 }}>Term pool — pick, then choose a bucket</div>
         <div style={{ minHeight: 36, padding: 6, background: c.chipBg, borderRadius: 4, border: `1px dashed ${c.line}` }}>
           {unplaced.length === 0 && <span style={{ fontSize: 12, color: c.ink3, padding: "4px 8px" }}>All terms placed, or no terms harvested yet.</span>}
-          <div style={{ display: "flex", flexWrap: "wrap" }}>{unplaced.map(t => <Chip key={t} c={c} term={t} type={termType(t)} draggable onDragStart={e => { e.dataTransfer.effectAllowed = "move"; setDragTerm(t); }} />)}</div>
+          <div style={{ display: "flex", flexWrap: "wrap" }}>{unplaced.map(t => <Chip key={t} c={c} term={t} type={termType(t)} selected={picked.has(t)} onClick={() => togglePick(t)} draggable onDragStart={e => { e.dataTransfer.effectAllowed = "move"; setDragTerm(t); }} />)}</div>
         </div>
       </div>
 
@@ -623,7 +633,14 @@ function FrameworkBuilder({ c, source, pool, kwFields }: BuilderProps) {
               {fwKey === "Custom" && customBuckets.length > 1 && <button onClick={() => removeCustomBucket(b.key)} style={{ background: "none", border: "none", color: c.ink3, cursor: "pointer" }}>×</button>}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap" }}>{(buckets[b.key] ?? []).map(t => <Chip key={t} c={c} term={t} type={termType(t)} selected onRemove={() => removeFrom(b.key, t)} />)}</div>
-            {!(buckets[b.key] ?? []).length && <span style={{ fontSize: 11.5, color: c.ink3, fontStyle: "italic" }}>Drop terms here</span>}
+            {livePicked.length > 0 && (
+              <button type="button" onClick={() => placeInto(b.key)}
+                aria-label={`Add ${livePicked.length === 1 ? livePicked[0] : `${livePicked.length} picked terms`} to ${b.label || "bucket"}`}
+                style={{ display: "block", width: "100%", marginTop: 4, padding: "5px 8px", background: c.accent, color: "#fff", border: "none", borderRadius: 3, fontSize: 11, fontFamily: SANS, fontWeight: 600, cursor: "pointer" }}>
+                + Add {livePicked.length} here
+              </button>
+            )}
+            {!(buckets[b.key] ?? []).length && !livePicked.length && <span style={{ fontSize: 11.5, color: c.ink3, fontStyle: "italic" }}>No terms yet</span>}
           </div>
         ))}
       </div>

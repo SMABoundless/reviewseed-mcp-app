@@ -220,6 +220,17 @@ test("assemble_query applies every booleanOpts default when booleanOpts is omitt
     '("Myocardial Infarction"[MeSH Terms] OR "Angina Pectoris"[MeSH Terms])');
 });
 
+test("assemble_query keeps a Custom framework's fourth concept instead of dropping it", async () => {
+  // Custom allows 1-6 concept groups but its catalogue entry lists three. A term
+  // in c4 used to vanish from the query with no error.
+  const r = payload(await call("reviewseed_assemble_query", {
+    source: "pubmed", mode: "framework",
+    pool: { keywords: ["a", "b", "c", "d"] },
+    framework: { key: "Custom", buckets: { c1: ["a"], c2: ["b"], c3: ["c"], c4: ["d"] } },
+  }));
+  assert.equal(r.query, '"a"[tiab]\nAND "b"[tiab]\nAND "c"[tiab]\nAND "d"[tiab]');
+});
+
 test("assemble_query in framework mode with no key lists all ten frameworks plus Custom", async () => {
   const r = payload(await call("reviewseed_assemble_query", {
     source: "pubmed", mode: "framework",
