@@ -195,6 +195,55 @@ test("advanced_search assembles per-source syntax without running when run:false
   assert.equal(ct.query, 'AREA[ConditionSearch]"heart failure"');
 });
 
+// ── Brief records + scope notes by label ────────────────────────────────────
+test("search with detail \"brief\" drops abstracts and trims authors, keeping the indexing", async () => {
+  const rec = { pmid: "111", title: "T", abstract: "A long abstract. ".repeat(120), authors: ["A", "B", "C", "D", "E"], mesh: ["Asthma"], keywords: ["wheeze"] };
+  const routes = [
+    { match: "esearch.fcgi", body: esearchJson(["111"]) },
+    { match: "efetch.fcgi", body: efetchXml([rec]) },
+  ];
+  mock = installMockFetch(routes);
+  const full = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma" }));
+  mock.restore();
+  mock = installMockFetch(routes);
+  const brief = payload(await call("reviewseed_search", { source: "pubmed", query: "asthma", detail: "brief", matchTerms: ["abstract"] }));
+  assert.ok(full.articles[0].abstract.length > 100, "full keeps the abstract");
+  assert.equal(full.detail, undefined);
+  assert.equal(brief.detail, "brief");
+  assert.match(brief.note, /abstracts omitted/);
+  assert.equal(brief.articles[0].abstract, "");
+  assert.equal(brief.articles[0].authors.length, 4);
+  assert.equal(brief.articles[0].authors[3], "et al.");
+  assert.deepEqual(brief.articles[0].mesh, full.articles[0].mesh);
+  assert.deepEqual(brief.articles[0].keywords, full.articles[0].keywords);
+  // matchedVia reads the abstract, so it must be computed BEFORE the abstract is dropped.
+  assert.deepEqual(brief.articles[0].matchedVia, ["abstract"]);
+  assert.ok(JSON.stringify(brief).length < JSON.stringify(full).length / 2);
+});
+
+test("vocab_details finds the scope note from the label alone", async () => {
+  mock = installMockFetch([
+    { match: "lookup/descriptor", body: JSON.stringify([{ resource: "http://id.nlm.nih.gov/mesh/D064866", label: "Mindfulness" }]) },
+    { match: "lookup/details", body: JSON.stringify({ terms: [{ label: "Mindfulness" }, { label: "Mindful Awareness" }] }) },
+    { match: "scopeNote", body: JSON.stringify({ results: { bindings: [{ note: { value: "A psychological state of awareness." } }] } }) },
+    { match: "sparql", body: JSON.stringify({ results: { bindings: [] } }) },
+  ]);
+  const r = payload(await call("reviewseed_vocab_details", { vocab: "mesh", label: "Mindfulness" }));
+  assert.equal(r.id, "D064866");
+  assert.equal(r.scopeNote, "A psychological state of awareness.");
+  assert.equal(r.scopeNoteStatus, undefined);
+});
+
+test("vocab_details explains an empty scope note instead of returning a bare blank", async () => {
+  mock = installMockFetch([
+    { match: "lookup/descriptor", body: "[]" },
+    { match: "sparql", body: JSON.stringify({ results: { bindings: [] } }) },
+  ]);
+  const r = payload(await call("reviewseed_vocab_details", { vocab: "mesh", label: "Not A Heading" }));
+  assert.equal(r.scopeNote, "");
+  assert.match(r.scopeNoteStatus, /No MeSH heading is named exactly/);
+});
+
 // ── Assemble query (headless) ───────────────────────────────────────────────
 
 test("assemble_query builds a boolean string with no UI and no network", async () => {

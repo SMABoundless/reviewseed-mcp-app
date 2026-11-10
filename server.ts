@@ -16,7 +16,7 @@ import {
   ERIC_ADV_FIELDS, ericAssembleTerm, ericAuthorSearch, ericLookup, ericSearch,
 } from "./server/eric.js";
 import { withMatchedVia } from "./server/match.js";
-import { isSlowLookup, meshHistory, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
+import { isSlowLookup, meshDescriptorId, meshHistory, meshVocabDetails, meshVocabSearch, SLOW_LOOKUP_NOTICE } from "./server/mesh.js";
 import { buildTranslationMatrix, PLATFORMS } from "./server/translate.js";
 import { lintQuery } from "./server/lint.js";
 import { applyHedge, getHedge, HEDGE_CAVEAT, HEDGES, hedgesFor } from "./server/hedges.js";
@@ -30,7 +30,7 @@ import {
   PUBMED_FIELDS, pubmedAssembleTerm, pubmedAuthorSearch, pubmedLookup, pubmedSearch,
 } from "./server/pubmed.js";
 import { buildBooleanQuery, buildFrameworkQuery, FRAMEWORKS, isFullyWrapped, matrixCellQuery, restrictToIds } from "./server/query.js";
-import type { Source } from "./server/types.js";
+import type { Article, Source } from "./server/types.js";
 
 // When compiled, server.js lives inside dist/ alongside mcp-app.html
 const DIST_DIR = import.meta.dirname.endsWith("dist")
@@ -72,6 +72,30 @@ const frameworkSpecSchema = z.object({
 const FRAMEWORK_HINT =
   "Pass the same `framework` you gave reviewseed_assemble_query whenever the question has more than one concept. " +
   "Without it the pool is treated as ONE concept and every term is OR'd together.";
+
+// Record lists are the most expensive thing this server returns: a full PubMed
+// record is ~2,400 characters and a full trial record ~5,000, most of it
+// abstract. A model that is harvesting terms or checking what a query finds
+// needs the title and the indexing, not the abstract — so every record-returning
+// tool takes `detail`. "full" stays the default because the inline UI hydrates
+// itself from these same results and shows abstracts.
+const detailSchema = z.enum(["full", "brief"]).default("full").describe(
+  "\"brief\" drops abstracts and shortens author lists to the first three — roughly a quarter of the size, with " +
+  "titles, ids, MeSH headings / ERIC descriptors and keywords intact. Prefer it when working headlessly: scanning " +
+  "what a query finds, or harvesting vocabulary. Use \"full\" (default) when you need to read abstracts.",
+);
+const BRIEF_NOTE = "Brief records: abstracts omitted, author lists cut to three. Repeat with detail \"full\", or pass specific ids to reviewseed_lookup, to read abstracts.";
+function briefArticles<T extends Article>(articles: T[]): T[] {
+  return articles.map(a => ({
+    ...a,
+    abstract: "",
+    authors: a.authors.length > 3 ? [...a.authors.slice(0, 3), "et al."] : a.authors,
+  }));
+}
+/** Apply `detail` to any result carrying an `articles` array. */
+function withDetail<R extends { articles: Article[] }>(r: R, detail: "full" | "brief"): R | (R & { detail: "brief"; note: string }) {
+  return detail === "brief" ? { ...r, articles: briefArticles(r.articles), detail: "brief" as const, note: BRIEF_NOTE } : r;
+}
 
 function textResult(payload: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(payload) }] };
@@ -152,16 +176,18 @@ export function createServer(): McpServer {
           "descriptor/keyword exact match, or free-text substring in title/abstract) — instead of leaving you to " +
           "cross-reference the full descriptor list by hand to see why it matched.",
         ),
+        detail: detailSchema,
       },
       annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async ({ source, query, page, pageSize, matchTerms }) => {
+    async ({ source, query, page, pageSize, matchTerms, detail }) => {
       try {
         const r = source === "eric" ? await ericSearch(query, page, pageSize)
           : source === "trials" ? await ctSearch(query, page)
           : await pubmedSearch(query, page, pageSize);
-        return textResult({ ...r, articles: withMatchedVia(r.articles, matchTerms) });
+        // matchedVia is computed on the full record (it reads the abstract), then trimmed.
+        return textResult(withDetail({ ...r, articles: withMatchedVia(r.articles, matchTerms) }, detail));
       } catch (e) { return errorResult(e); }
     },
   );
@@ -176,16 +202,17 @@ export function createServer(): McpServer {
       inputSchema: {
         source: sourceEnum,
         text: z.string().describe("Pasted reference list"),
+        detail: detailSchema,
       },
       annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async ({ source, text }) => {
+    async ({ source, text, detail }) => {
       try {
         const r = source === "eric" ? await ericLookup(text)
           : source === "trials" ? await ctLookup(text)
           : await pubmedLookup(text);
-        return textResult(r);
+        return textResult(withDetail(r, detail));
       } catch (e) { return errorResult(e); }
     },
   );
@@ -210,11 +237,12 @@ export function createServer(): McpServer {
         })).default([]),
         run: z.boolean().default(true).describe("Also execute the assembled query against the source"),
         page: z.number().int().min(1).max(5).default(1),
+        detail: detailSchema,
       },
       annotations: READS_REMOTE,
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async ({ source, rows, run, page }) => {
+    async ({ source, rows, run, page, detail }) => {
       try {
         if (!rows.length) {
           const fields = source === "eric" ? ERIC_ADV_FIELDS : source === "trials" ? CT_ADV_FIELDS : PUBMED_FIELDS;
@@ -229,7 +257,7 @@ export function createServer(): McpServer {
         const results = source === "eric" ? await ericSearch(query, page, 10)
           : source === "trials" ? await ctSearch(query, page)
           : await pubmedSearch(query, page, 10);
-        return textResult({ query, ...results });
+        return textResult(withDetail({ query, ...results }, detail));
       } catch (e) { return errorResult(e); }
     },
   );
@@ -266,20 +294,31 @@ export function createServer(): McpServer {
   server.tool(
     "reviewseed_vocab_details",
     "Get the scope note (MeSH only), entry terms / Use-For synonyms, and broader/narrower headings for a MeSH or " +
-    "ERIC Thesaurus term. Broader/narrower terms can be passed back into reviewseed_vocab_search to walk the hierarchy.",
+    "ERIC Thesaurus term. Broader/narrower terms can be passed back into reviewseed_vocab_search to walk the hierarchy. " +
+    "An empty `scopeNote` always comes with a `scopeNoteStatus` saying why — never read it as \"this heading has no definition\".",
     {
       vocab: z.enum(["mesh", "eric"]),
       label: z.string().describe("The canonical heading/descriptor label (not a synonym)"),
-      id: z.string().optional().describe("MeSH descriptor id, if known from a prior vocab_search result — enables the scope note"),
+      id: z.string().optional().describe("MeSH descriptor id, if known from a prior vocab_search result. Optional: without it the id is looked up from the label (one extra request)."),
     },
     READS_REMOTE,
     async ({ vocab, label, id }) => {
       try {
         if (vocab === "mesh") {
           const started = Date.now();
-          const details = await meshVocabDetails(label, id);
+          // The scope note is keyed by descriptor id. Without one, resolve it
+          // from the label instead of returning a blank note that reads as
+          // "no definition".
+          const resolvedId = id ?? await meshDescriptorId(label);
+          const details = await meshVocabDetails(label, resolvedId ?? undefined);
+          const status = details.scopeNote ? {} : {
+            scopeNoteStatus: resolvedId
+              ? "NLM returned no scope note for this descriptor. Some headings have none, and the lookup can also fail silently — check the MeSH Browser before concluding it is undefined."
+              : `No MeSH heading is named exactly "${label}", so there is no scope note to return. Use reviewseed_vocab_search to find the canonical label.`,
+          };
+          const out = { ...(resolvedId ? { id: resolvedId } : {}), ...details, ...status };
           const slow = isSlowLookup(started, Date.now());
-          return textResult(slow ? { ...details, slow, notice: SLOW_LOOKUP_NOTICE } : details);
+          return textResult(slow ? { ...out, slow, notice: SLOW_LOOKUP_NOTICE } : out);
         }
         const details = await ericThesaurusDetails(label);
         return details === undefined
@@ -297,14 +336,15 @@ export function createServer(): McpServer {
       source: sourceEnum,
       name: z.string(),
       page: z.number().int().min(1).max(5).default(1),
+      detail: detailSchema,
     },
     READS_REMOTE,
-    async ({ source, name, page }) => {
+    async ({ source, name, page, detail }) => {
       try {
         const r = source === "eric" ? await ericAuthorSearch(name, page, 10)
           : source === "trials" ? await ctAuthorSearch(name)
           : await pubmedAuthorSearch(name, page, 10);
-        return textResult(r);
+        return textResult(withDetail(r, detail));
       } catch (e) { return errorResult(e); }
     },
   );

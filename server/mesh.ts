@@ -46,6 +46,26 @@ async function meshScopeNote(id: string): Promise<string> {
   return (j?.results?.bindings?.[0] as any)?.note?.value ?? "";
 }
 
+/**
+ * The descriptor id for an exact heading label, or null when NLM has no heading
+ * by that name. Exact match first, then a case-insensitive pass over "contains"
+ * results, because the exact endpoint is case-sensitive.
+ */
+export async function meshDescriptorId(label: string): Promise<string | null> {
+  const clean = label.trim();
+  if (!clean) return null;
+  try {
+    let r = await fetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=exact&limit=1`);
+    let j = r.ok ? await r.json() as Array<{ resource: string; label: string }> : [];
+    if (!j.length) {
+      r = await fetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=contains&limit=10`);
+      j = r.ok ? await r.json() as Array<{ resource: string; label: string }> : [];
+      j = j.filter(d => d.label.toLowerCase() === clean.toLowerCase());
+    }
+    return j[0]?.resource?.split("/").pop() ?? null;
+  } catch { return null; }
+}
+
 async function meshEntryTerms(label: string): Promise<{ terms: string[]; bt: string[]; nt: string[] } | null> {
   const clean = label.trim();
   let r = await fetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=exact&limit=1`);

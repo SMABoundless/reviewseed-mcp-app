@@ -76,15 +76,15 @@ export const esearchJson = (ids: string[], count = ids.length) =>
 export const esearchErrorJson = (msg: string) =>
   JSON.stringify({ esearchresult: { ERROR: msg } });
 
-export const efetchXml = (articles: Array<{ pmid: string; title?: string; mesh?: string[]; keywords?: string[] }>) =>
+export const efetchXml = (articles: Array<{ pmid: string; title?: string; mesh?: string[]; keywords?: string[]; abstract?: string; authors?: string[] }>) =>
   `<?xml version="1.0"?><PubmedArticleSet>${articles.map(a => `
     <PubmedArticle><MedlineCitation>
       <PMID>${a.pmid}</PMID>
       <Article>
         <Journal><ISOAbbreviation>J Test</ISOAbbreviation><JournalIssue><PubDate><Year>2024</Year></PubDate></JournalIssue></Journal>
         <ArticleTitle>${a.title ?? "Untitled"}</ArticleTitle>
-        <AuthorList><Author><LastName>Doe</LastName><Initials>J</Initials></Author></AuthorList>
-        <Abstract><AbstractText>Abstract text.</AbstractText></Abstract>
+        <AuthorList>${(a.authors ?? ["Doe"]).map(n => `<Author><LastName>${n}</LastName><Initials>J</Initials></Author>`).join("")}</AuthorList>
+        <Abstract><AbstractText>${a.abstract ?? "Abstract text."}</AbstractText></Abstract>
         <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
       </Article>
       <MeshHeadingList>${(a.mesh ?? []).map(m => `<MeshHeading><DescriptorName>${m}</DescriptorName></MeshHeading>`).join("")}</MeshHeadingList>
