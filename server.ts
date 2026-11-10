@@ -636,11 +636,12 @@ export function createServer(): McpServer {
   server.tool(
     "reviewseed_hedges",
     "List published methodological search filters — 'hedges' — for a source, or attach one to a query. Covers the " +
-    "Cochrane sensitivity-maximising randomised-trial filter, NLM's systematic-review publication type, human/animal " +
+    "Cochrane randomised-trial filter in both published versions (sensitivity-maximising for a full systematic " +
+    "review; sensitivity- and precision-maximising for a smaller set), NLM's systematic-review publication type, human/animal " +
     "scoping, ERIC peer-review and education-level limits, and ClinicalTrials.gov study type. EVERY entry carries its " +
     "publisher, a citation, its sensitivity/precision trade-off, and a `validated` flag that is FALSE for convenience " +
     "clusters nobody has measured — pass that flag on to the user rather than presenting all filters as equivalent. " +
-    "These strings are point-in-time transcriptions verified on 2026-08-01; always surface `caveat` telling the user to " +
+    "These strings are point-in-time transcriptions (verified dates are in `caveat`); always surface `caveat` telling the user to " +
     "check the citation against the current published version before relying on it in a review. Pass `apply` with a " +
     "query to get the combined string back, correctly parenthesised.",
     {
