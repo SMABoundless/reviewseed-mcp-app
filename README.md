@@ -102,9 +102,9 @@ server/
                         BibTeX titles; dedup by normalised DOI then accession; PRISMA counts
   receipt.ts            fingerprints the reproducible parts of a strategy (not totals, not ids,
                         not render time) and diffs a saved receipt against a fresh one
-  hedges.ts             9 published methodological filters with publisher, citation, trade-off
+  hedges.ts             10 published methodological filters with publisher, citation, trade-off
                         and an honest `validated` flag — every string verified live 2026-08-01
-  lint.ts               13 deterministic search-lint rules mapped to the six PRESS domains,
+  lint.ts               15 deterministic search-lint rules mapped to the six PRESS domains,
                         plus the list of what it deliberately does NOT check
   translate.ts          emit-only vendor syntax for the 7 platforms ReviewSeed can't query —
                         strings a human pastes, never executed here, so the caveat travels with them

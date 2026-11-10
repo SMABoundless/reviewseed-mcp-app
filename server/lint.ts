@@ -49,6 +49,8 @@ export const LINT_RULES: LintRule[] = [
   { id: "empty-group", domain: "syntax", severity: "error", title: "Empty parenthesised group" },
   { id: "dangling-operator", domain: "operators", severity: "error", title: "Query begins or ends with an operator" },
   { id: "lowercase-operator", domain: "operators", severity: "warning", title: "Lowercase Boolean operator" },
+  { id: "mixed-operators-ungrouped", domain: "operators", severity: "warning", title: "AND and OR mixed without parentheses" },
+  { id: "not-operator", domain: "operators", severity: "warning", title: "NOT can remove relevant records" },
   { id: "truncation-in-phrase", domain: "text-word", severity: "warning", title: "Truncation inside a quoted phrase" },
   { id: "field-tag-noop", domain: "text-word", severity: "warning", title: "Field tag does nothing on this source" },
   { id: "hyphenated-term", domain: "text-word", severity: "info", title: "Hyphenated term may need spelling variants" },
@@ -105,6 +107,32 @@ const STOPWORDS = new Set(["a", "an", "the", "of", "in", "on", "for", "with", "t
 /** Strip quoted spans so operator/paren checks don't trip over quoted content. */
 const outsideQuotes = (q: string): string => q.replace(/"[^"]*"/g, '""');
 
+/**
+ * How many parenthesis levels (the top level included) hold both an AND and an
+ * OR directly, with no inner parentheses separating them. Only uppercase
+ * operators count — a lowercase one is reported by its own rule — and field
+ * tags in [brackets] are skipped so a tag's words can't read as operators.
+ */
+function mixedOperatorGroups(bare: string): number {
+  const s = bare.replace(/\[[^\]]*\]/g, " ");
+  const stack: Array<{ and: boolean; or: boolean }> = [{ and: false, or: false }];
+  let mixed = 0;
+  const close = () => { const g = stack.pop(); if (g && g.and && g.or) mixed++; };
+  for (const tok of s.match(/\(|\)|[^\s()]+/g) ?? []) {
+    if (tok === "(") stack.push({ and: false, or: false });
+    else if (tok === ")") { if (stack.length > 1) close(); }
+    else if (tok === "AND") stack[stack.length - 1].and = true;
+    else if (tok === "OR") stack[stack.length - 1].or = true;
+  }
+  while (stack.length) close();
+  return mixed;
+}
+
+// The one NOT that is a published, validated convention: Cochrane's exclusion of
+// records indexed for animals but not humans. It only removes records positively
+// indexed as animal-only, so it is not the recall risk the NOT rule warns about.
+const SAFE_ANIMAL_NOT = /\bNOT\s*\(+\s*animals\s*\[(?:mh|mesh[^\]]*)\]\s+NOT\s+humans\s*\[(?:mh|mesh[^\]]*)\]\s*\)+/gi;
+
 function push(out: LintFinding[], id: string, detail: string, subject?: string): void {
   const r = RULE.get(id);
   if (!r) return;
@@ -145,6 +173,21 @@ export function lintQuery(input: LintInput): LintResult {
     const lower = bare.match(/(?:^|\s)(and|or|not)(?=\s)/);
     if (lower) {
       push(out, "lowercase-operator", `"${lower[1]}" reads as an operator here. PubMed accepts lowercase; Ovid and Embase.com treat it as a search term. Uppercase it before translating this strategy.`, lower[1]);
+    }
+  }
+
+  // Only meaningful when the parentheses balance; otherwise the levels are
+  // themselves in doubt and the syntax error is the finding.
+  if (q && !negative && depth === 0) {
+    const mixed = mixedOperatorGroups(bare);
+    if (mixed) {
+      push(out, "mixed-operators-ungrouped", `${mixed === 1 ? "One group mixes" : `${mixed} groups mix`} AND and OR at the same level with no parentheses between them. PubMed applies operators strictly left to right, and other platforms use their own order (Web of Science applies AND before OR; Scopus applies OR before AND), so the same string can run as different searches. Add parentheses to say which you mean.`);
+    }
+  }
+  if (q) {
+    const nots = (bare.replace(SAFE_ANIMAL_NOT, " ").match(/\bNOT\b/g) || []).length;
+    if (nots) {
+      push(out, "not-operator", `The query uses NOT ${nots === 1 ? "once" : `${nots} times`}. NOT removes every record that mentions the excluded term, including relevant records that mention both. PRESS asks reviewers to check each one; consider whether the exclusion is safer applied at screening.`);
     }
   }
 

@@ -716,6 +716,18 @@
         "title": "Lowercase Boolean operator"
       },
       {
+        "id": "mixed-operators-ungrouped",
+        "domain": "operators",
+        "severity": "warning",
+        "title": "AND and OR mixed without parentheses"
+      },
+      {
+        "id": "not-operator",
+        "domain": "operators",
+        "severity": "warning",
+        "title": "NOT can remove relevant records"
+      },
+      {
         "id": "truncation-in-phrase",
         "domain": "text-word",
         "severity": "warning",
