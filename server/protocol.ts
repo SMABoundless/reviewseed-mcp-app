@@ -186,7 +186,7 @@ export function buildSearchProtocol(input: ProtocolInput): SearchProtocol {
       mode,
       string: query,
       booleanOpts: mode === "boolean"
-        ? { kwOp: booleanOpts?.kwOp ?? "OR", vocabOp: booleanOpts?.vocabOp ?? "OR", joinOp: booleanOpts?.joinOp ?? "AND" }
+        ? { kwOp: booleanOpts?.kwOp ?? "OR", vocabOp: booleanOpts?.vocabOp ?? "OR", joinOp: booleanOpts?.joinOp ?? "OR" }
         : null,
       framework: mode === "framework" && framework
         ? { key: framework.key, buckets: framework.buckets }

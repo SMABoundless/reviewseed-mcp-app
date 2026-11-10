@@ -127,8 +127,10 @@ export function platformTerm(key: PlatformKey, kind: "keyword" | "vocab", term: 
 
 /**
  * Whole-pool query for one platform: keywords OR'd, vocabulary OR'd, the two
- * groups AND'd — the same shape buildBooleanQuery produces for the native
- * sources, so a translation is recognizably the same search.
+ * groups OR'd — one concept block, the same shape buildBooleanQuery produces
+ * for the native sources by default, so a translation is recognizably the
+ * same search. (Keywords and headings for one concept are alternatives: a
+ * record matching either belongs in the set.)
  *
  * Pooled advanced-search snippets are deliberately NOT translated: they are
  * already in a specific source's syntax (PubMed brackets, Essie AREA[...]),
@@ -146,7 +148,7 @@ export function buildPlatformQuery(key: PlatformKey, pool: Pool, kwFields: KwFie
   const vocab = [...(pool.mesh ?? []), ...(pool.eric ?? [])].map(t => p.vocab(t));
   if (kws.length) groups.push(kws.length > 1 ? `(${kws.join(" OR ")})` : kws[0]);
   if (vocab.length) groups.push(vocab.length > 1 ? `(${vocab.join(" OR ")})` : vocab[0]);
-  return groups.join(" AND ");
+  return groups.join(" OR ");
 }
 
 /** Pooled snippets that were left out of every translation, so callers can say so. */

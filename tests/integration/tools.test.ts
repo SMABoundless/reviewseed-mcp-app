@@ -202,10 +202,11 @@ test("assemble_query builds a boolean string with no UI and no network", async (
     source: "pubmed", mode: "boolean",
     pool: { keywords: ["gabapentin"], mesh: ["Neuralgia"], eric: [], queries: [], ericQueries: [], ctQueries: [] },
   }));
-  assert.equal(r.query, '"gabapentin"[tiab] AND "Neuralgia"[MeSH Terms]');
+  assert.equal(r.query, '"gabapentin"[tiab] OR "Neuralgia"[MeSH Terms]');
 });
 
-// Pins the OR/OR/AND operator defaults when booleanOpts is omitted entirely.
+// Pins the OR/OR/OR operator defaults (keywords and headings for one concept
+// are alternatives, so the groups are OR'd too) when booleanOpts is omitted entirely.
 // Two layers supply them: the schema (.prefault({}) in server.ts — zod 4's
 // .default({}) skips nested defaults) and buildBooleanQuery's own `??`
 // fallbacks. This guards the end result if either layer changes.
@@ -215,7 +216,7 @@ test("assemble_query applies every booleanOpts default when booleanOpts is omitt
     pool: { keywords: ["heart attack", "myocardial infarction"], mesh: ["Myocardial Infarction", "Angina Pectoris"] },
   }));
   assert.equal(r.query,
-    '("heart attack"[tiab] OR "myocardial infarction"[tiab]) AND ' +
+    '("heart attack"[tiab] OR "myocardial infarction"[tiab]) OR ' +
     '("Myocardial Infarction"[MeSH Terms] OR "Angina Pectoris"[MeSH Terms])');
 });
 
@@ -786,9 +787,9 @@ test("translate_query emits every platform's syntax with no network", async () =
     pool: { keywords: ["heart attack"], mesh: ["Myocardial Infarction"], eric: [], queries: [], ericQueries: [], ctQueries: [] },
   }));
   const by = Object.fromEntries(r.platforms.map((p: any) => [p.key, p.query]));
-  assert.equal(by.ovid, '"heart attack".ti,ab. AND exp Myocardial Infarction/');
-  assert.equal(by.embase, "'heart attack':ti,ab AND 'Myocardial Infarction'/exp");
-  assert.equal(by.cochrane, '"heart attack":ti,ab AND [mh "Myocardial Infarction"]');
+  assert.equal(by.ovid, '"heart attack".ti,ab. OR exp Myocardial Infarction/');
+  assert.equal(by.embase, "'heart attack':ti,ab OR 'Myocardial Infarction'/exp");
+  assert.equal(by.cochrane, '"heart attack":ti,ab OR [mh "Myocardial Infarction"]');
 });
 
 test("translate_query always carries the untested caveat — the strings cannot be verified here", async () => {

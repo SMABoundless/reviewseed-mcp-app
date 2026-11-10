@@ -60,11 +60,11 @@
   ],
   "queryCases": [
     {
-      "name": "ovid: keywords OR'd, headings OR'd, groups AND'd",
+      "name": "ovid: keywords OR'd, headings OR'd, groups OR'd",
       "platform": "ovid",
       "pool": { "keywords": ["heart attack", "MI"], "mesh": ["Myocardial Infarction"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
       "kwFields": { "MI": "ti" },
-      "expected": "(\"heart attack\".ti,ab. OR \"MI\".ti.) AND exp Myocardial Infarction/"
+      "expected": "(\"heart attack\".ti,ab. OR \"MI\".ti.) OR exp Myocardial Infarction/"
     },
     {
       "name": "embase: single keyword needs no group parens",
@@ -85,7 +85,7 @@
       "platform": "cochrane",
       "pool": { "keywords": ["mindfulness"], "mesh": ["Mindfulness", "Meditation"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
       "kwFields": {},
-      "expected": "\"mindfulness\":ti,ab AND ([mh \"Mindfulness\"] OR [mh \"Meditation\"])"
+      "expected": "\"mindfulness\":ti,ab OR ([mh \"Mindfulness\"] OR [mh \"Meditation\"])"
     },
     {
       "name": "empty pool translates to an empty string, not a stray operator",

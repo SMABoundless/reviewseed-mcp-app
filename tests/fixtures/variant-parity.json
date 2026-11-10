@@ -36,7 +36,7 @@
       "expectedVariants": [
         {
           "key": "as-built",
-          "query": "(\"burnout\"[tiab] OR \"compassion fatigue\"[tiab]) AND \"Burnout, Professional\"[MeSH Terms]"
+          "query": "(\"burnout\"[tiab] OR \"compassion fatigue\"[tiab]) OR \"Burnout, Professional\"[MeSH Terms]"
         },
         {
           "key": "vocab-only",
@@ -48,15 +48,15 @@
         },
         {
           "key": "keywords-all-fields",
-          "query": "(\"burnout\"[all] OR \"compassion fatigue\"[all]) AND \"Burnout, Professional\"[MeSH Terms]"
+          "query": "(\"burnout\"[all] OR \"compassion fatigue\"[all]) OR \"Burnout, Professional\"[MeSH Terms]"
         },
         {
           "key": "keywords-title-only",
-          "query": "(\"burnout\"[ti] OR \"compassion fatigue\"[ti]) AND \"Burnout, Professional\"[MeSH Terms]"
+          "query": "(\"burnout\"[ti] OR \"compassion fatigue\"[ti]) OR \"Burnout, Professional\"[MeSH Terms]"
         },
         {
           "key": "keywords-and",
-          "query": "(\"burnout\"[tiab] AND \"compassion fatigue\"[tiab]) AND \"Burnout, Professional\"[MeSH Terms]"
+          "query": "(\"burnout\"[tiab] AND \"compassion fatigue\"[tiab]) OR \"Burnout, Professional\"[MeSH Terms]"
         }
       ],
       "expectedSkipped": []
@@ -216,7 +216,7 @@
       "expectedVariants": [
         {
           "key": "as-built",
-          "query": "(title:\"tutoring\" OR description:\"tutoring\") AND subject:\"Rural Schools\""
+          "query": "(title:\"tutoring\" OR description:\"tutoring\") OR subject:\"Rural Schools\""
         },
         {
           "key": "vocab-only",
@@ -228,11 +228,11 @@
         },
         {
           "key": "keywords-all-fields",
-          "query": "\"tutoring\" AND subject:\"Rural Schools\""
+          "query": "\"tutoring\" OR subject:\"Rural Schools\""
         },
         {
           "key": "keywords-title-only",
-          "query": "title:\"tutoring\" AND subject:\"Rural Schools\""
+          "query": "title:\"tutoring\" OR subject:\"Rural Schools\""
         }
       ],
       "expectedSkipped": [

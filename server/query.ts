@@ -49,7 +49,7 @@ export function buildBooleanQuery(
   opts: { kwOp?: "OR" | "AND"; vocabOp?: "OR" | "AND"; joinOp?: "AND" | "OR" },
   target: Source,
 ): string {
-  const kwOp = opts.kwOp ?? "OR", vocabOp = opts.vocabOp ?? "OR", joinOp = opts.joinOp ?? "AND";
+  const kwOp = opts.kwOp ?? "OR", vocabOp = opts.vocabOp ?? "OR", joinOp = opts.joinOp ?? "OR";
   const parts: string[] = [];
   if (pool.keywords.length) {
     const inner = pool.keywords.map(t => kwTerm(t, kwFields, target)).join(` ${kwOp} `);

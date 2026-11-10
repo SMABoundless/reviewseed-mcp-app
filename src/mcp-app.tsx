@@ -512,7 +512,7 @@ function BooleanBuilder({ c, source, pool, kwFields, onFieldChange }: BuilderPro
   const [selQ, setSelQ] = useState(new Set<string>());
   const [kwOp, setKwOp] = useState<"OR" | "AND">("OR");
   const [vocabOp, setVocabOp] = useState<"OR" | "AND">("OR");
-  const [joinOp, setJoinOp] = useState<"AND" | "OR">("AND");
+  const [joinOp, setJoinOp] = useState<"AND" | "OR">("OR");
   const [copied, setCopied] = useState(false);
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<Set<string>>>) => (t: string) =>

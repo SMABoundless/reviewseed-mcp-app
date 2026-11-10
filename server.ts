@@ -322,7 +322,7 @@ export function createServer(): McpServer {
         booleanOpts: z.object({
           kwOp: z.enum(["OR", "AND"]).default("OR"),
           vocabOp: z.enum(["OR", "AND"]).default("OR"),
-          joinOp: z.enum(["AND", "OR"]).default("AND"),
+          joinOp: z.enum(["AND", "OR"]).default("OR"),
         }).prefault({}),
       }).optional()
         .describe("Generate the standard tuning ladder from a term pool: as-built, headings-only, free-text-only, " +
@@ -383,7 +383,10 @@ export function createServer(): McpServer {
     "reviewseed_assemble_query",
     "Assemble a Boolean or framework-structured (PICO, PECO, SPIDER, PCC, ...) search string from a curated term " +
     "pool, in the target source's own syntax (PubMed bracket tags, ERIC field prefixes, or ClinicalTrials.gov " +
-    "AREA[...] operators). Call with mode \"framework\" and no `framework.key` to list the ten available frameworks. " +
+    "AREA[...] operators). Boolean mode treats the whole pool as ONE concept: keywords, headings and " +
+    "snippets are OR'd together by default, because a record matching either the free text or the heading belongs " +
+    "in the set. For a question with several concepts (population, intervention, ...) use mode \"framework\", " +
+    "which ORs within each bucket and ANDs the buckets. Call with mode \"framework\" and no `framework.key` to list the ten available frameworks. " +
     "Callable directly without ever opening the UI.",
     {
       source: sourceEnum,
@@ -396,7 +399,7 @@ export function createServer(): McpServer {
       booleanOpts: z.object({
         kwOp: z.enum(["OR", "AND"]).default("OR"),
         vocabOp: z.enum(["OR", "AND"]).default("OR"),
-        joinOp: z.enum(["AND", "OR"]).default("AND"),
+        joinOp: z.enum(["AND", "OR"]).default("OR"),
       }).prefault({}),
       framework: z.object({
         key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
@@ -552,7 +555,7 @@ export function createServer(): McpServer {
       booleanOpts: z.object({
         kwOp: z.enum(["OR", "AND"]).default("OR"),
         vocabOp: z.enum(["OR", "AND"]).default("OR"),
-        joinOp: z.enum(["AND", "OR"]).default("AND"),
+        joinOp: z.enum(["AND", "OR"]).default("OR"),
       }).prefault({}),
       framework: z.object({
         key: z.string().describe("One of the FRAMEWORKS keys, e.g. PICO, PECO, SPIDER, PCC, Custom"),
