@@ -30,7 +30,7 @@ for (const c of fx.termCases) {
 
 for (const c of fx.queryCases) {
   test(`translation parity: ${c.name}`, () => {
-    assert.equal(buildPlatformQuery(c.platform, c.pool, c.kwFields), c.expected);
+    assert.equal(buildPlatformQuery(c.platform, c.pool, c.kwFields, c.framework), c.expected);
   });
 }
 

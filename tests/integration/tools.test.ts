@@ -780,6 +780,67 @@ test("validate_recall calls a sole term untestable rather than pretending it's c
   assert.equal(r.searchesRun, 1, "no search is wasted on an empty variant");
 });
 
+// ── Concept structure survives the tools that rebuild a query ───────────────
+const FW_POOL = { keywords: ["teen", "mindfulness"], mesh: ["Adolescent", "Anxiety"], eric: [], queries: [], ericQueries: [], ctQueries: [] };
+const FW_SPEC = { key: "PICO", buckets: { P: ["teen", "Adolescent"], I: ["mindfulness"], O: ["Anxiety"] } };
+const FW_QUERY = '("teen"[tiab] OR "Adolescent"[MeSH Terms])\nAND "mindfulness"[tiab]\nAND "Anxiety"[MeSH Terms]';
+
+test("validate_recall with a framework never calls a concept's only term prunable", async () => {
+  // Every search returns both seeds. For teen/Adolescent that means prunable.
+  // For mindfulness and Anxiety — each the only term of its concept — removal
+  // drops the concept and BROADENS the search, so "no seed lost" proves nothing.
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111", "222"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }, { pmid: "222" }]) },
+  ]);
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: FW_QUERY, seedIds: ["111", "222"],
+    pool: FW_POOL, framework: FW_SPEC, leaveOneOut: true,
+  }));
+  assert.deepEqual(r.prunable.sort(), ["Adolescent", "teen"]);
+  assert.deepEqual(r.untestable.sort(), ["Anxiety", "mindfulness"]);
+  const sole = r.criticality.find((c: any) => c.term === "mindfulness");
+  assert.equal(sole.critical, null);
+  assert.equal(sole.soleInConcept, "Intervention");
+  assert.match(sole.note, /removes the whole concept/);
+  assert.equal(r.leaveOneOutBaseline, undefined, "query matches the framework rebuild, so no separate baseline");
+  assert.equal(r.searchesRun, 3, "one baseline plus the two testable terms");
+});
+
+test("validate_recall says so when the pool does not rebuild to the query it was given", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }]) },
+  ]);
+  // A multi-concept query, but no framework: the flat pool rebuilds to one big OR.
+  const r = payload(await call("reviewseed_validate_recall", {
+    source: "pubmed", query: FW_QUERY, seedIds: ["111"], pool: FW_POOL, leaveOneOut: true,
+  }));
+  assert.match(r.leaveOneOutBaseline.query, /^\("teen"\[tiab\] OR "mindfulness"\[tiab\]\) OR /);
+  assert.match(r.leaveOneOutBaseline.note, /pass `framework`/);
+});
+
+test("compare_queries' ladder keeps the framework, and flags a rung that lost a concept", async () => {
+  mock = installMockFetch([
+    { match: "esearch.fcgi", body: esearchJson(["111"]) },
+    { match: "efetch.fcgi", body: efetchXml([{ pmid: "111" }]) },
+  ]);
+  const r = payload(await call("reviewseed_compare_queries", {
+    source: "pubmed", autoFrom: { pool: FW_POOL, framework: FW_SPEC },
+  }));
+  assert.equal(r.comparison[0].query, FW_QUERY);
+  const vocabOnly = r.comparison.find((c: any) => c.label === "Subject headings only");
+  assert.equal(vocabOnly.query, '"Adolescent"[MeSH Terms]\nAND "Anxiety"[MeSH Terms]');
+  assert.match(vocabOnly.caution, /Intervention has no terms of this kind/);
+  assert.equal(r.comparison[0].caution, undefined);
+  assert.ok(r.skipped.some((x: any) => x.key === "keywords-and" && /framework/.test(x.reason)));
+});
+
+test("translate_query with a framework ANDs the concepts instead of OR'ing the whole pool", async () => {
+  const r = payload(await call("reviewseed_translate_query", { pool: FW_POOL, framework: FW_SPEC, platforms: ["ovid"] }));
+  assert.equal(r.platforms[0].query, '("teen".ti,ab. OR exp Adolescent/) AND "mindfulness".ti,ab. AND exp Anxiety/');
+});
+
 // ── Translate query (headless, emit-only) ───────────────────────────────────
 
 test("translate_query emits every platform's syntax with no network", async () => {

@@ -32,7 +32,7 @@ function vocabTerm(term: string, target: Source): string {
 // FIRST "(" doesn't close until the LAST character, i.e. the whole string is
 // one group, not "(A) OR (B)" (which starts with "(" and ends with ")" too,
 // but isn't a single enclosing unit and still needs the outer wrap).
-function isFullyWrapped(s: string): boolean {
+export function isFullyWrapped(s: string): boolean {
   const t = s.trim();
   if (t.length < 2 || t[0] !== "(" || t[t.length - 1] !== ")") return false;
   let depth = 0;
@@ -133,6 +133,32 @@ export function buildFrameworkQuery(
     // only wrap when there's an internal OR to protect from the top-level AND.
     return parts.length > 1 ? `(${parts.join(" OR ")})` : (parts[0] ?? null);
   }).filter((x): x is string => x !== null).join("\nAND ");
+}
+
+/** A framework and the terms placed in its buckets — what framework mode builds from. */
+export interface FrameworkSpec { key: string; buckets: Record<string, string[]> }
+
+/**
+ * The concepts of a framework that actually contribute to a query for this
+ * pool and source: one entry per bucket holding at least one term the pool
+ * still contains. Tuning rungs and leave-one-out use this to notice when
+ * removing terms empties a bucket — at which point the whole concept drops out
+ * of the AND and the query gets BROADER, which is not what "remove a term"
+ * is supposed to measure.
+ */
+export function activeConcepts(
+  framework: FrameworkSpec,
+  pool: Pool,
+  target: Source,
+): Array<{ key: string; label: string; terms: string[] }> {
+  const fw = FRAMEWORKS[framework.key];
+  if (!fw) throw new Error(`Unknown framework "${framework.key}"`);
+  const queries = target === "eric" ? pool.ericQueries : target === "trials" ? pool.ctQueries : pool.queries;
+  const vocab = target === "eric" ? pool.eric : pool.mesh;
+  const live = new Set([...(pool.keywords ?? []), ...(vocab ?? []), ...(queries ?? [])]);
+  return fw.buckets
+    .map(b => ({ key: b.key, label: b.label, terms: (framework.buckets[b.key] ?? []).filter(t => live.has(t)) }))
+    .filter(b => b.terms.length > 0);
 }
 
 // ── Recall validation: restrict a query to specific records ───────────────────

@@ -242,8 +242,42 @@
         }
       ]
     }
-  ],
+  
+    ,{
+      "name": "framework: rungs keep the concept structure, and a rung that empties a concept says so",
+      "source": "pubmed",
+      "pool": { "keywords": ["teen", "mindfulness", "yoga"], "mesh": ["Adolescent", "Anxiety"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "framework": { "key": "PICO", "buckets": { "P": ["teen", "Adolescent"], "I": ["mindfulness"], "O": ["Anxiety"] } },
+      "expectedVariants": [
+        { "key": "as-built", "query": "(\"teen\"[tiab] OR \"Adolescent\"[MeSH Terms])\nAND \"mindfulness\"[tiab]\nAND \"Anxiety\"[MeSH Terms]" },
+        { "key": "vocab-only", "query": "\"Adolescent\"[MeSH Terms]\nAND \"Anxiety\"[MeSH Terms]" },
+        { "key": "keywords-only", "query": "\"teen\"[tiab]\nAND \"mindfulness\"[tiab]" },
+        { "key": "keywords-all-fields", "query": "(\"teen\"[all] OR \"Adolescent\"[MeSH Terms])\nAND \"mindfulness\"[all]\nAND \"Anxiety\"[MeSH Terms]" },
+        { "key": "keywords-title-only", "query": "(\"teen\"[ti] OR \"Adolescent\"[MeSH Terms])\nAND \"mindfulness\"[ti]\nAND \"Anxiety\"[MeSH Terms]" }
+      ],
+      "expectedDroppedConcepts": { "vocab-only": ["Intervention"], "keywords-only": ["Outcome"] },
+      "expectedSkipped": [
+        { "key": "keywords-and", "reasonMatches": "Not applicable to a framework query" }
+      ]
+    }
+],
   "leaveOneOutCases": [
+    {
+      "name": "framework: only placed terms are tested, and the last term of a concept is flagged",
+      "source": "pubmed",
+      "pool": { "keywords": ["teen", "mindfulness", "yoga"], "mesh": ["Adolescent", "Anxiety"], "eric": [], "queries": [], "ericQueries": [], "ctQueries": [] },
+      "kwFields": {},
+      "opts": {},
+      "framework": { "key": "PICO", "buckets": { "P": ["teen", "Adolescent"], "I": ["mindfulness"], "O": ["Anxiety"] } },
+      "expected": [
+        { "term": "teen", "pool": "keywords", "query": "\"Adolescent\"[MeSH Terms]\nAND \"mindfulness\"[tiab]\nAND \"Anxiety\"[MeSH Terms]", "empty": false },
+        { "term": "mindfulness", "pool": "keywords", "query": "(\"teen\"[tiab] OR \"Adolescent\"[MeSH Terms])\nAND \"Anxiety\"[MeSH Terms]", "empty": false, "soleInConcept": "Intervention" },
+        { "term": "Adolescent", "pool": "mesh", "query": "\"teen\"[tiab]\nAND \"mindfulness\"[tiab]\nAND \"Anxiety\"[MeSH Terms]", "empty": false },
+        { "term": "Anxiety", "pool": "mesh", "query": "(\"teen\"[tiab] OR \"Adolescent\"[MeSH Terms])\nAND \"mindfulness\"[tiab]", "empty": false, "soleInConcept": "Outcome" }
+      ]
+    },
     {
       "name": "each term's pool is named, and removing the only term is flagged empty",
       "source": "pubmed",
