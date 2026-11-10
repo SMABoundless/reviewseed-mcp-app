@@ -55,19 +55,19 @@ Claude / Host
 | Tool | Typically called by | Description |
 |---|---|---|
 | `reviewseed_open` | Claude | Opens the UI in the host |
-| `reviewseed_search` | UI or Claude | Search PubMed / ERIC / ClinicalTrials.gov |
+| `reviewseed_search` | UI or Claude | Search PubMed / ERIC / ClinicalTrials.gov. `detail: "brief"` drops abstracts for roughly a quarter of the size (also on lookup, advanced search and author search) |
 | `reviewseed_lookup` | UI or Claude | Resolve pasted citations to records |
 | `reviewseed_advanced_search` | UI or Claude | List field options, or assemble + run a multi-row field query |
 | `reviewseed_vocab_search` | UI or Claude | Search MeSH / ERIC Thesaurus by heading or synonym |
-| `reviewseed_vocab_details` | UI or Claude | Scope note, entry terms, broader/narrower for a heading |
+| `reviewseed_vocab_details` | UI or Claude | Scope note, entry terms, broader/narrower for a heading. Works from the label alone; an empty scope note says why |
 | `reviewseed_author_search` | UI or Claude | Everything an author published in the chosen source |
-| `reviewseed_assemble_query` | UI or Claude | Build a Boolean or framework string from a term pool — headless-friendly |
-| `reviewseed_compare_queries` | Claude | Run 2–6 variants against one source: real totals plus sample-unique ids. Pass `autoFrom` with a pool to generate the standard **tuning ladder** — as built, headings only, free text only, broadened, narrowed, AND'd — with unbuildable rungs reported, not dropped |
-| `reviewseed_translate_query` | Claude | Translate a pool into seven platforms ReviewSeed **cannot** query. Emit-only and therefore untested — always pass the caveat on |
-| `reviewseed_validate_recall` | Claude | Does the query retrieve the seeds it was built from? Reports misses, and optionally which terms are load-bearing for recall |
+| `reviewseed_assemble_query` | UI or Claude | Build a Boolean or framework string from a term pool — headless-friendly. Boolean mode is ONE concept (keywords and headings OR'd); use a framework for several concepts |
+| `reviewseed_compare_queries` | Claude | Run 2–6 variants against one source: real totals plus sample-unique ids. Pass `autoFrom` with a pool to generate the standard **tuning ladder** — as built, headings only, free text only, broadened, narrowed, AND'd — with unbuildable rungs reported, not dropped. Pass `framework` to keep a multi-concept query's structure |
+| `reviewseed_translate_query` | Claude | Translate a pool into seven platforms ReviewSeed **cannot** query. Emit-only and therefore untested — always pass the caveat on. Pass `framework` to AND the concepts instead of OR'ing the whole pool |
+| `reviewseed_validate_recall` | Claude | Does the query retrieve the seeds it was built from? Reports misses, and optionally which terms are load-bearing for recall (pass `framework` for a multi-concept query; a concept's only term is reported untestable, not prunable) |
 | `reviewseed_evidence_map` | Claude | Concept × concept counts for a scoping/mapping review — read the zeros, not the big numbers |
 | `reviewseed_lint_query` | Claude | Deterministic audit of a search string, mapped to the six PRESS domains — plus what it deliberately did *not* check |
-| `reviewseed_hedges` | Claude | Published methodological filters (Cochrane trials, NLM systematic reviews, ERIC/CT.gov limits) with publisher, citation and a `validated` flag — attaches one to a query on request |
+| `reviewseed_hedges` | Claude | Published methodological filters (both Cochrane trial filters, NLM systematic reviews, ERIC/CT.gov limits) with publisher, citation and a `validated` flag — attaches one to a query on request |
 | `reviewseed_protocol` | Claude | The citable record of a strategy — database and platform, query as sent, every term with its provenance, limits, vocabulary editions, searches run — plus a term-yield report. Its output is what `reviewseed_receipt` takes |
 | `reviewseed_receipt` | Claude | Fingerprints a strategy for a review update, and diffs a saved receipt against a fresh one — refusing to compare two *different* searches |
 | `reviewseed_export_records` | Claude | RIS / BibTeX / CSV for a screening tool, deduped with the dropped ids listed, plus PRISMA identified counts and the numbers it can't know |
@@ -103,7 +103,7 @@ server/
   receipt.ts            fingerprints the reproducible parts of a strategy (not totals, not ids,
                         not render time) and diffs a saved receipt against a fresh one
   hedges.ts             10 published methodological filters with publisher, citation, trade-off
-                        and an honest `validated` flag — every string verified live 2026-08-01
+                        and an honest `validated` flag — every string verified live (2026-08-01; Cochrane trial filters 2026-11-10)
   lint.ts               15 deterministic search-lint rules mapped to the six PRESS domains,
                         plus the list of what it deliberately does NOT check
   translate.ts          emit-only vendor syntax for the 7 platforms ReviewSeed can't query —
