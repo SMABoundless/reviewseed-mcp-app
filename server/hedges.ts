@@ -60,7 +60,7 @@ export const HEDGES: Hedge[] = [
     publisher: "Cochrane",
     citation: "Cochrane Highly Sensitive Search Strategy for identifying randomized trials in MEDLINE: sensitivity-maximizing version (2008 revision), PubMed format. Lefebvre C, Manheimer E, Glanville J. Cochrane Handbook for Systematic Reviews of Interventions, ch. 6 (v5.1.0, 2011); carried forward in the current Handbook's ch. 4 technical supplement. Transcribed from work.cochrane.org/pubmed on 2026-11-10.",
     validated: true,
-    tradeoff: "Built for recall: `drug therapy[sh]`, `trial[tiab]` and `groups[tiab]` pull in many non-trials, which is the intended cost. Expect roughly three times the records of the sensitivity- and precision-maximising version. Don't use it to estimate how many trials exist.",
+    tradeoff: "Built for recall: `drug therapy[sh]`, `trial[tiab]` and `groups[tiab]` pull in many non-trials, which is the intended cost. It returns more records than the sensitivity- and precision-maximising version; how many more depends on the topic. Don't use it to estimate how many trials exist.",
   },
   {
     id: "pubmed-rct-cochrane-sens-prec",
