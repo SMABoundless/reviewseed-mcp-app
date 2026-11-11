@@ -15,7 +15,7 @@
     "snapshot": "tsx tests/scripts/gen-shared-surface.ts && tsx tests/scripts/gen-parser-expected.ts && tsx tests/scripts/gen-vocab-expected.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "^1.5.0",
+    "@modelcontextprotocol/ext-apps": "^2.0.4",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
