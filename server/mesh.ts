@@ -16,6 +16,40 @@ const MESH_SPARQL = "https://id.nlm.nih.gov/mesh/sparql";
 export const SLOW_LOOKUP_MS = 4000;
 export const SLOW_LOOKUP_NOTICE = "NLM's MeSH service is responding slowly — this is upstream, not ReviewSeed.";
 
+// A request to NLM that never answers used to hang the tool until the HOST gave
+// up (observed 2026-11-10: a vocab_details call sat for four minutes before
+// Claude Desktop timed it out). Every NLM request now has its own deadline, set
+// well above the worst latency measured during the July degradation, and a
+// missed deadline is reported as what it is.
+//
+// It must PROPAGATE. Several callers below swallow network errors and return
+// "nothing found", which is right for a 404 and wrong for a timeout: an
+// unanswered lookup would read as "no such heading". So the timeout is its own
+// error class and every catch rethrows it.
+const MESH_TIMEOUT_DEFAULT_MS = 30_000;
+const meshTimeoutMs = (): number => {
+  const n = Number(process.env.REVIEWSEED_MESH_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : MESH_TIMEOUT_DEFAULT_MS;
+};
+export class MeshTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`NLM's MeSH service did not respond within ${Math.round(ms / 1000)} seconds. This is upstream, not ReviewSeed, ` +
+      "and it says nothing about whether the heading exists. Try again in a moment.");
+    this.name = "MeshTimeoutError";
+  }
+}
+const rethrowTimeout = (e: unknown): void => { if (e instanceof MeshTimeoutError) throw e; };
+async function nlmFetch(url: string): Promise<Response> {
+  const ms = meshTimeoutMs();
+  try {
+    return await fetch(url, { signal: AbortSignal.timeout(ms) });
+  } catch (e) {
+    const name = (e as { name?: string } | null)?.name;
+    if (name === "TimeoutError" || name === "AbortError") throw new MeshTimeoutError(ms);
+    throw e;
+  }
+}
+
 // True when `started` is far enough in the past that the caller should tell the
 // user which service they're waiting on. Time is passed in, not read here, so
 // both repos can agree on the rule without either reading its own clock.
@@ -25,10 +59,10 @@ export function isSlowLookup(started: number, now: number): boolean {
 
 async function sparql(query: string): Promise<{ results?: { bindings?: Record<string, { value: string }>[] } } | null> {
   try {
-    const r = await fetch(`${MESH_SPARQL}?format=JSON&inference=false&query=${encodeURIComponent(query)}`);
+    const r = await nlmFetch(`${MESH_SPARQL}?format=JSON&inference=false&query=${encodeURIComponent(query)}`);
     if (!r.ok) return null;
     return await r.json();
-  } catch { return null; }
+  } catch (e) { rethrowTimeout(e); return null; }
 }
 
 async function meshHierarchy(id: string): Promise<{ bt: string[]; nt: string[] }> {
@@ -55,30 +89,30 @@ export async function meshDescriptorId(label: string): Promise<string | null> {
   const clean = label.trim();
   if (!clean) return null;
   try {
-    let r = await fetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=exact&limit=1`);
+    let r = await nlmFetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=exact&limit=1`);
     let j = r.ok ? await r.json() as Array<{ resource: string; label: string }> : [];
     if (!j.length) {
-      r = await fetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=contains&limit=10`);
+      r = await nlmFetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=contains&limit=10`);
       j = r.ok ? await r.json() as Array<{ resource: string; label: string }> : [];
       j = j.filter(d => d.label.toLowerCase() === clean.toLowerCase());
     }
     return j[0]?.resource?.split("/").pop() ?? null;
-  } catch { return null; }
+  } catch (e) { rethrowTimeout(e); return null; }
 }
 
 async function meshEntryTerms(label: string): Promise<{ terms: string[]; bt: string[]; nt: string[] } | null> {
   const clean = label.trim();
-  let r = await fetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=exact&limit=1`);
+  let r = await nlmFetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=exact&limit=1`);
   let j = r.ok ? await r.json() as Array<{ resource: string; label: string }> : [];
   if (!j.length) {
-    r = await fetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=contains&limit=10`);
+    r = await nlmFetch(`${MESH_LOOKUP}?label=${encodeURIComponent(clean)}&match=contains&limit=10`);
     j = r.ok ? await r.json() as Array<{ resource: string; label: string }> : [];
     j = j.filter(d => d.label.toLowerCase() === clean.toLowerCase());
   }
   const id = j[0]?.resource?.split("/").pop();
   if (!id) return null;
   const [dr, hier] = await Promise.all([
-    fetch(`https://id.nlm.nih.gov/mesh/lookup/details?descriptor=${encodeURIComponent(id)}`),
+    nlmFetch(`https://id.nlm.nih.gov/mesh/lookup/details?descriptor=${encodeURIComponent(id)}`),
     meshHierarchy(id),
   ]);
   if (!dr.ok) return null;
@@ -101,8 +135,8 @@ export async function meshVocabSearch(q: string): Promise<VocabRow[]> {
   if (clean.length < 2) return [];
   const enc = encodeURIComponent(clean);
   const [descR, termR] = await Promise.all([
-    fetch(`${MESH_LOOKUP}?label=${enc}&match=contains&limit=25`).then(r => r.ok ? r.json() : []).catch(() => []),
-    fetch(`https://id.nlm.nih.gov/mesh/lookup/term?label=${enc}&match=contains&limit=40`).then(r => r.ok ? r.json() : []).catch(() => []),
+    nlmFetch(`${MESH_LOOKUP}?label=${enc}&match=contains&limit=25`).then(r => r.ok ? r.json() : []).catch(e => { rethrowTimeout(e); return []; }),
+    nlmFetch(`https://id.nlm.nih.gov/mesh/lookup/term?label=${enc}&match=contains&limit=40`).then(r => r.ok ? r.json() : []).catch(e => { rethrowTimeout(e); return []; }),
   ]) as [Array<{ resource: string; label: string }>, Array<{ resource: string; label: string }>];
 
   const rows: VocabRow[] = [];

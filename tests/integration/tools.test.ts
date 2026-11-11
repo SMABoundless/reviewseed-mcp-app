@@ -234,6 +234,30 @@ test("vocab_details finds the scope note from the label alone", async () => {
   assert.equal(r.scopeNoteStatus, undefined);
 });
 
+test("an NLM request that never answers is reported as a timeout, not as 'no such heading'", async () => {
+  // A fetch that only settles when its abort signal fires — NLM accepting the
+  // connection and then saying nothing.
+  const original = globalThis.fetch;
+  const before = process.env.REVIEWSEED_MESH_TIMEOUT_MS;
+  process.env.REVIEWSEED_MESH_TIMEOUT_MS = "30";
+  globalThis.fetch = ((_url: unknown, init?: RequestInit) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+  })) as typeof fetch;
+  try {
+    const started = Date.now();
+    const details = payload(await call("reviewseed_vocab_details", { vocab: "mesh", label: "Mindfulness" }));
+    const search = payload(await call("reviewseed_vocab_search", { vocab: "mesh", query: "mindfulness" }));
+    assert.ok(Date.now() - started < 2000, "returns promptly instead of hanging");
+    assert.match(details.error, /did not respond within/);
+    assert.equal(details.scopeNoteStatus, undefined, "must not claim the heading doesn't exist");
+    assert.match(search.error, /did not respond within/);
+    assert.equal(search.rows, undefined, "must not report an empty result list");
+  } finally {
+    globalThis.fetch = original;
+    if (before === undefined) delete process.env.REVIEWSEED_MESH_TIMEOUT_MS; else process.env.REVIEWSEED_MESH_TIMEOUT_MS = before;
+  }
+});
+
 test("vocab_details explains an empty scope note instead of returning a bare blank", async () => {
   mock = installMockFetch([
     { match: "lookup/descriptor", body: "[]" },
