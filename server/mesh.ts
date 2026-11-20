@@ -61,7 +61,7 @@ async function sparql(query: string): Promise<{ results?: { bindings?: Record<st
   try {
     const r = await nlmFetch(`${MESH_SPARQL}?format=JSON&inference=false&query=${encodeURIComponent(query)}`);
     if (!r.ok) return null;
-    return await r.json();
+    return await r.json() as { results?: { bindings?: Record<string, { value: string }>[] } };
   } catch (e) { rethrowTimeout(e); return null; }
 }
 
