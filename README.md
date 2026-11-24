@@ -6,6 +6,41 @@ Built with the [MCP Apps framework](https://apps.extensions.modelcontextprotocol
 
 ---
 
+## Quick start (Claude Desktop)
+
+You need [Node.js](https://nodejs.org) 20.19 or newer (22 LTS is a good choice) and [git](https://git-scm.com). Then, in a terminal:
+
+```bash
+git clone https://github.com/SMABoundless/reviewseed-mcp-app.git
+cd reviewseed-mcp-app
+npm install
+npm run build
+pwd
+```
+
+The last command prints the folder's full path. Copy it.
+
+In Claude Desktop, open **Settings → Developer → Edit Config** and add a `reviewseed` entry to `claude_desktop_config.json`, replacing `/absolute/path/to` with the path you copied:
+
+```json
+{
+  "mcpServers": {
+    "reviewseed": {
+      "command": "node",
+      "args": ["/absolute/path/to/reviewseed-mcp-app/dist/main.js", "--stdio"]
+    }
+  }
+}
+```
+
+If the file already lists other servers, add `"reviewseed": { ... }` inside the existing `"mcpServers"` block; don't create a second one.
+
+Quit and reopen Claude Desktop, then ask: *"Open ReviewSeed and search PubMed for clinician burnout and mindfulness."*
+
+To update later, run `git pull && npm install && npm run build` in the same folder and restart Claude Desktop.
+
+---
+
 ## What it does
 
 When Claude calls the `reviewseed_open` tool, the host renders the ReviewSeed UI inline:
@@ -125,7 +160,7 @@ ground for tool-driven use (e.g. `pt` / `publicationtype` / `Phase` field rows) 
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20.19+ or 22.12+ (the build tooling requires it)
 - npm
 
 ### Install
@@ -138,7 +173,7 @@ npm install
 ### Dev mode (watch + rebuild)
 
 ```bash
-npm start
+npm run dev
 ```
 
 This runs Vite in watch mode (rebuilds the UI on changes) and starts the MCP server with `tsx watch`.
@@ -161,6 +196,15 @@ Outputs:
 > it, `npm run build` and restart the host. The tests never need `dist/` — they run against
 > source via `tsx`, and the integration harness stands in a placeholder `dist/mcp-app.html`
 > only when one is absent.
+
+### Tests
+
+```bash
+npm test            # type-check + unit and integration tests, offline, a few seconds
+npm run test:live   # 6 smoke tests against the real PubMed, NLM, ERIC and ClinicalTrials.gov APIs
+```
+
+`npm test` also runs on every push and pull request (see `.github/workflows/ci.yml`). Details are in [tests/README.md](tests/README.md).
 
 ### Start server (after build)
 
@@ -241,4 +285,6 @@ For Claude Desktop, add it under the `"reviewseed"` entry's `"env"` in `claude_d
 
 ## License
 
-MIT
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+Copyright 2026 Northwestern University Libraries.

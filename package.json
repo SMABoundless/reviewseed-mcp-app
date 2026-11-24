@@ -2,6 +2,15 @@
   "name": "reviewseed-mcp-app",
   "version": "2.0.0",
   "description": "ReviewSeed MCP App — search PubMed, ClinicalTrials.gov, and ERIC; explore MeSH/ERIC vocabulary with synonyms and hierarchy; assemble Boolean or ten-framework (PICO, PECO, SPIDER, PCC, ...) search strings",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SMABoundless/reviewseed-mcp-app.git"
+  },
+  "homepage": "https://reviewseed.library.northwestern.edu",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && tsc -p tsconfig.server.json && mkdir -p dist/server/assets && cp server/assets/eric-thesaurus-2025.json dist/server/assets/eric-thesaurus-2025.json && cross-env INPUT=mcp-app.html vite build",
