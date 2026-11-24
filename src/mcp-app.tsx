@@ -14,7 +14,7 @@ import type { SearchLogEntry, TermOrigin, TermSources } from "../server/protocol
 import type { Article, Source, VocabRow } from "../server/types.js";
 import { isSlowLookup, SLOW_LOOKUP_MS, SLOW_LOOKUP_NOTICE } from "../server/mesh.js";
 
-const mcpApp = new App({ name: "ReviewSeed", version: "2.0.0" });
+const mcpApp = new App({ name: "ReviewSeed", version: "2.0.0-beta.1" });
 
 // ── Theme — ported verbatim from the website's T.light / T.dark ───────────────
 interface Theme {

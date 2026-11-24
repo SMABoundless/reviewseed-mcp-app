@@ -37,7 +37,7 @@ const DIST_DIR = import.meta.dirname.endsWith("dist")
   ? import.meta.dirname
   : path.join(import.meta.dirname, "dist");
 const RESOURCE_URI = "ui://reviewseed/mcp-app.html";
-const SERVER_VERSION = "2.0.0";
+const SERVER_VERSION = "2.0.0-beta.1";
 // Every tool only reads: none writes, deletes or sends anything anywhere. The
 // split is whether it reaches an outside API (PubMed, NLM, ERIC,
 // ClinicalTrials.gov) or works purely on what it was given.
