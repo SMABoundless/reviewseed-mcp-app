@@ -8,7 +8,7 @@ Built with the [MCP Apps framework](https://apps.extensions.modelcontextprotocol
 
 ## Quick start (Claude Desktop)
 
-You need [Node.js](https://nodejs.org) 20.19 or newer (22 LTS is a good choice) and [git](https://git-scm.com). Then, in a terminal:
+You need [Node.js](https://nodejs.org) 22.12 or newer (the current LTS is a good choice) and [git](https://git-scm.com). Then, in a terminal:
 
 ```bash
 git clone https://github.com/SMABoundless/reviewseed-mcp-app.git
@@ -160,7 +160,7 @@ ground for tool-driven use (e.g. `pt` / `publicationtype` / `Phase` field rows) 
 
 ### Prerequisites
 
-- Node.js 20.19+ or 22.12+ (the build tooling requires it)
+- Node.js 22.12+ (the build and dev tooling require it)
 - npm
 
 ### Install
